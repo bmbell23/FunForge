@@ -1,0 +1,1619 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Queue Sidebar (desktop: always visible left, mobile: hamburger drawer) -->
+<div class="queue-overlay" id="queueOverlay" onclick="toggleQueue()"></div>
+<div class="queue-sidebar" id="queueSidebar">
+    <div class="queue-header">
+        <span class="queue-title">🎶 Up Next</span>
+        <button class="queue-close" onclick="toggleQueue()">✕</button>
+    </div>
+
+    <!-- Playback controls pinned to sidebar top -->
+    <div class="sidebar-controls">
+        <button class="qc-btn" onclick="pinProtectedAction(previousTrack)" title="Previous">⏮️</button>
+        <button class="qc-btn" onclick="pinProtectedAction(togglePlay)" id="playPauseBtn" title="Play/Pause">▶️</button>
+        <button class="qc-btn" onclick="pinProtectedAction(nextTrack)" title="Skip">⏭️</button>
+        <button class="qc-btn qc-btn-stop" onclick="pinProtectedAction(clearQueue)" title="Stop & Clear">⏹️</button>
+    </div>
+
+    <!-- Now Playing (inside sidebar) -->
+    <div class="sidebar-now-playing" id="nowPlaying" style="display:none;">
+        <div class="sidebar-np-art" id="nowPlayingArt">🎵</div>
+        <div class="sidebar-np-info">
+            <div class="sidebar-np-title" id="nowPlayingTitle"></div>
+            <div class="sidebar-np-artist" id="nowPlayingArtist"></div>
+        </div>
+    </div>
+
+    <div class="queue-list" id="queueList">
+        <div class="queue-empty">No songs queued yet!</div>
+    </div>
+</div>
+
+
+<!-- Guest Color Picker Modal -->
+<div class="guest-modal-overlay" id="guestModal" style="display:none;" onclick="if(event.target===this) hideGuestModal()">
+    <div class="guest-modal">
+        <h2 class="guest-modal-title">👋 Add a Guest</h2>
+        <label class="guest-name-label">Name (optional)</label>
+        <input type="text" id="guestNameInput" class="guest-name-input" placeholder="Guest" maxlength="12" autocomplete="off">
+        <p class="guest-color-label">Pick a color:</p>
+        <div class="guest-color-grid" id="guestColorGrid"></div>
+        <button class="guest-cancel-btn" onclick="hideGuestModal()">Cancel</button>
+    </div>
+</div>
+
+<!-- Main Content Area -->
+<div class="music-main" id="musicMain">
+    <!-- Turn Indicator & Controls Bar -->
+    <div class="controls-bar">
+        <button class="queue-hamburger" onclick="toggleQueue()" id="queueHamburger">
+            <span class="hamburger-icon">☰</span>
+            <span class="queue-badge" id="queueBadge" style="display:none;">0</span>
+        </button>
+
+        <div class="turn-indicator" id="turnIndicator">
+            <span class="turn-dot" id="turnDot"></span>
+            <span class="turn-name" id="turnName"></span>
+            <span class="turn-counter" id="turnCounter"></span>
+        </div>
+
+        <!-- View toggle & Parent Mode -->
+        <div class="controls-right">
+            <button class="ctrl-btn ctrl-btn-guest" id="addGuestBtn" onclick="showGuestModal()" title="Add Guest">👤 Add Guest</button>
+            <button class="ctrl-btn" id="viewToggleBtn" onclick="toggleView()" title="Albums/Songs">💿</button>
+            <button class="ctrl-btn" id="directPlayToggleBtn" onclick="toggleDirectPlay()" style="display:none;" title="Queue Mode — tap to switch to Direct Play">📋</button>
+            <!-- The lock button is injected here by kidmedia-lock.js — it's the
+                 same control on every page, so unlocking here stays unlocked
+                 in Podcasts, on an album page, and after an app restart. -->
+        </div>
+    </div>
+
+    <!-- Guest chips — shown when any guests are active -->
+    <div class="guest-chips-bar" id="guestChipsBar" style="display:none;"></div>
+
+    <!-- Search bar (parent mode only) -->
+    <div class="search-bar" id="searchBar" style="display:none;">
+        <input type="text" id="searchInput" placeholder="Search songs, albums, artists..." oninput="filterSongs()">
+        <button class="search-clear" onclick="clearSearch()">✕</button>
+    </div>
+
+    <!-- Song Grid (All Songs view - default for kids) -->
+    <div class="song-grid" id="songGrid"></div>
+
+    <!-- Album Grid (Album view - toggle or parent mode) -->
+    <div class="album-grid" id="albumGrid" style="display:none;">
+        {% for album in albums %}
+        <div class="album-card-wrapper" data-album-id="{{ album.id }}">
+            <div class="parent-controls" style="display: none;">
+                <input type="checkbox" class="album-checkbox" value="{{ album.id }}">
+                <button class="edit-button" onclick="editAlbum({{ album.id }}); event.preventDefault();">⚙️</button>
+            </div>
+            <!-- The href stays for direct links / no-JS, but the click opens an
+                 in-page sheet: navigating away would destroy this page's <audio>
+                 and stop the music just because someone opened an album. -->
+            <a href="/music/albums/{{ album.id }}" class="album-card"
+               onclick="return openAlbumSheet({{ album.id }}, event)">
+                <div class="album-cover">
+                    {% if album.cover_art_path %}
+                    <img src="{{ album.cover_art_path }}" alt="{{ album.title }}">
+                    {% else %}
+                    <div class="album-cover-placeholder">🎵</div>
+                    {% endif %}
+                    <div class="album-dp-overlay" style="display:none;">
+                        <button class="album-dp-play-btn"
+                                onclick="event.preventDefault(); event.stopPropagation(); playAlbumNow({{ album.id }})"
+                                title="Play Album Now">▶</button>
+                        <button class="album-dp-queue-btn"
+                                onclick="event.preventDefault(); event.stopPropagation(); addAlbumToQueue({{ album.id }})"
+                                title="Add Album to Queue">+</button>
+                    </div>
+                </div>
+                <div class="album-info">
+                    <div class="album-title">{{ album.title }}</div>
+                    <div class="album-artist">{{ album.album_artist or (album.artist.name if album.artist else "Unknown Artist") }}</div>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Artist Grid (Album Artist view) -->
+    <div class="artist-grid" id="artistGrid" style="display:none;">
+        {% for artist in artists %}
+        {% set covers = artist.albums | selectattr('cover_art_path') | list %}
+        <div class="artist-card-wrapper">
+            <a href="/music/artists/{{ artist.id }}" class="artist-card"
+               onclick="return openArtistSheet({{ artist.id }}, event)">
+                <div class="album-cover">
+                    {% if covers %}
+                    <img src="{{ covers[0].cover_art_path }}" alt="{{ artist.name }}">
+                    {% else %}
+                    <div class="album-cover-placeholder">🎤</div>
+                    {% endif %}
+                    <div class="album-dp-overlay" style="display:none;">
+                        <button class="album-dp-play-btn"
+                                onclick="event.preventDefault(); event.stopPropagation(); playArtistNow({{ artist.id }})"
+                                title="Play Artist Now">▶</button>
+                        <button class="album-dp-queue-btn"
+                                onclick="event.preventDefault(); event.stopPropagation(); addArtistToQueue({{ artist.id }})"
+                                title="Add Artist to Queue">+</button>
+                    </div>
+                </div>
+                <div class="artist-info">
+                    <div class="artist-name">{{ artist.name }}</div>
+                    <div class="artist-meta">{{ artist.albums | length }} album{{ 's' if artist.albums | length != 1 else '' }}</div>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if not albums %}
+    <div class="empty-state" id="emptyState">
+        <p class="empty-message">No music found!</p>
+        <button onclick="scanLibrary()" class="big-button scan-button">
+            <span class="button-icon">🔍</span>
+            <span class="button-text">Scan Library</span>
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- In-page album / artist browser (see openMediaSheet) -->
+<div class="sheet-overlay" id="mediaSheet" style="display:none;" onclick="if(event.target===this) closeMediaSheet()">
+    <div class="sheet">
+        <div class="sheet-head">
+            <div class="sheet-art" id="sheetArt">🎵</div>
+            <div class="sheet-titles">
+                <div class="sheet-title" id="sheetTitle"></div>
+                <div class="sheet-subtitle" id="sheetSubtitle"></div>
+            </div>
+            <button class="sheet-close" onclick="closeMediaSheet()" title="Close">✕</button>
+        </div>
+        <div class="sheet-actions" id="sheetActions"></div>
+        <div class="sheet-tracks" id="sheetTracks"></div>
+    </div>
+</div>
+
+<!-- Hidden audio element -->
+<audio id="audioPlayer"></audio>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ============ STATE ============
+let KIDS = [
+    { name: 'Weston', color: '#7B1FA2', colorLight: '#CE93D8', emoji: '💜' },
+    { name: 'Rowan', color: '#1565C0', colorLight: '#64B5F6', emoji: '💙' }
+];
+const BASE_KIDS_COUNT = 2; // permanent kids — never saved as guest
+const PARENT_USER = { name: 'Parent', color: '#F9A825', colorLight: '#FFF9C4', emoji: '⭐' };
+const MAX_SONGS_PER_KID = 5;
+const COUNT_COLORS = ['#f44336','#ff9800','#ff9800','#FDD835','#FDD835','#4CAF50'];
+// Guest color palette — no blue or purple (those belong to Weston & Rowan)
+const GUEST_COLORS = [
+    { color: '#E53935', colorLight: '#FFCDD2', emoji: '❤️',  label: 'Red'    },
+    { color: '#EC407A', colorLight: '#FCE4EC', emoji: '🩷', label: 'Pink'   },
+    { color: '#FF7043', colorLight: '#FFCCBC', emoji: '🧡', label: 'Orange' },
+    { color: '#FDD835', colorLight: '#FFFDE7', emoji: '💛', label: 'Yellow' },
+    { color: '#9CCC65', colorLight: '#F1F8E9', emoji: '🍀', label: 'Lime'   },
+    { color: '#43A047', colorLight: '#C8E6C9', emoji: '💚', label: 'Green'  },
+    { color: '#26A69A', colorLight: '#E0F2F1', emoji: '🌊', label: 'Teal'   },
+    { color: '#26C6DA', colorLight: '#E0F7FA', emoji: '🩵', label: 'Cyan'   },
+    { color: '#8D6E63', colorLight: '#EFEBE9', emoji: '🤎', label: 'Brown'  },
+    { color: '#78909C', colorLight: '#ECEFF1', emoji: '🩶', label: 'Silver' },
+];
+
+let currentTurn = 0; // 0 = Weston, 1 = Rowan (or guest index)
+let picks = { 0: [], 1: [] };
+let playQueue = []; // { track, kidIndex } — kidIndex -1 = parent
+let currentQueueIndex = -1;
+let allTracks = [];
+let parentModeActive = false;
+let parentDirectPlay = false; // true = click plays immediately; false = click adds to queue
+let currentView = 'songs';
+const audioPlayer = document.getElementById('audioPlayer');
+
+// ============ PERSISTENCE (localStorage only) ============
+const STORAGE_KEY = 'kidmedia_state';
+
+function saveState() {
+    // Only persist base kids — guests are transient
+    let firstPicker = 0;
+    if (picks[1].length > 0 && picks[0].length === 0) firstPicker = 1;
+    else if (picks[0].length > 0) firstPicker = 0;
+    else firstPicker = Math.min(currentTurn, BASE_KIDS_COUNT - 1);
+
+    const savedPicks = {};
+    for (let i = 0; i < BASE_KIDS_COUNT; i++) {
+        savedPicks[i] = (picks[i] || []).map(t => t.id);
+    }
+
+    // Remap any guest queue entries to parent (-1) so they survive reload gracefully
+    const savedQueue = playQueue.map(q => ({
+        trackId: q.track.id,
+        kidIndex: q.kidIndex >= BASE_KIDS_COUNT ? -1 : q.kidIndex
+    }));
+
+    const state = {
+        currentTurn: Math.min(currentTurn, BASE_KIDS_COUNT - 1),
+        picks: savedPicks,
+        playQueue: savedQueue,
+        currentQueueIndex,
+        lastFirstPicker: firstPicker,
+        timestamp: Date.now()
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function loadState() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return false;
+        const state = JSON.parse(raw);
+        if (!state.picks) return false;
+
+        currentTurn = Math.min(state.currentTurn || 0, BASE_KIDS_COUNT - 1);
+        currentQueueIndex = state.currentQueueIndex;
+
+        picks = {};
+        for (let i = 0; i < BASE_KIDS_COUNT; i++) picks[i] = [];
+        for (let kidIdx = 0; kidIdx < BASE_KIDS_COUNT; kidIdx++) {
+            if (state.picks[kidIdx]) {
+                for (const trackId of state.picks[kidIdx]) {
+                    const track = allTracks.find(t => t.id === trackId);
+                    if (track) picks[kidIdx].push(track);
+                }
+            }
+        }
+
+        playQueue = [];
+        for (const item of (state.playQueue || [])) {
+            const track = allTracks.find(t => t.id === item.trackId);
+            if (track) playQueue.push({ track, kidIndex: item.kidIndex });
+        }
+
+        return (playQueue.length > 0 || picks[0].length > 0 || picks[1].length > 0);
+    } catch (e) {
+        console.error('Failed to load state:', e);
+        return false;
+    }
+}
+
+function getKidInfo(kidIndex) {
+    if (kidIndex >= 0 && kidIndex < KIDS.length) return KIDS[kidIndex];
+    return PARENT_USER;
+}
+
+// ============ INIT ============
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadTracks();
+    audioPlayer.addEventListener('ended', onTrackEnded);
+
+    // Try to restore persisted state
+    const restored = loadState();
+    if (restored) {
+        renderSongGrid();
+        updateTurnIndicator();
+        renderQueue();
+        updateQueueBadge();
+        if (currentQueueIndex >= 0 && currentQueueIndex < playQueue.length) {
+            updateNowPlaying(playQueue[currentQueueIndex]);
+        }
+    } else {
+        // Check who picked first last time — swap for fairness
+        try {
+            const prev = JSON.parse(localStorage.getItem('kidmedia_state') || '{}');
+            if (typeof prev.lastFirstPicker === 'number') {
+                currentTurn = prev.lastFirstPicker === 0 ? 1 : 0;
+            }
+        } catch(e) {}
+        renderSongGrid();
+        updateTurnIndicator();
+    }
+
+    // Parent mode follows the global lock, which survives navigation and restarts.
+    if (KidLock.isUnlocked()) enterParentMode(); else updateGuestControls();
+    KidLock.onChange(unlocked => { if (unlocked) enterParentMode(); else exitParentMode(); });
+
+    // ── OS media integration (lock screen, headphones, Bluetooth, watch) and,
+    // inside the Android app, the foreground service + wake lock that keep audio
+    // alive once the screen turns off. See static/js/kidmedia-media.js.
+    KidMediaNative.attach({
+        audio: audioPlayer,
+        getMeta: () => {
+            const item = playQueue[currentQueueIndex];
+            if (!item) return null;
+            return {
+                title:  item.track.title,
+                artist: item.track.artist || '',
+                album:  item.track.album || 'KidMedia',
+                cover:  item.track.cover_art || ''
+            };
+        },
+        // Lock-screen / headphone controls belong to whoever is holding the
+        // phone, so they aren't PIN-gated — but they can only move within the
+        // queue the kids already built, never wipe it.
+        onPlay:  () => { if (audioPlayer.paused) togglePlay(); },
+        onPause: () => { if (!audioPlayer.paused) togglePlay(); },
+        onNext:  () => nextTrack(),
+        onPrev:  () => previousTrack(),
+        onStop:  () => { if (!audioPlayer.paused) togglePlay(); },
+        onSeek:  (sec) => { audioPlayer.currentTime = sec; }
+    });
+
+    // Screen wake lock — keeps the tablet's display from dimming mid-song while
+    // the app is in front. Background playback does NOT depend on this: the
+    // browser releases it the moment the page is hidden, which is exactly when
+    // the native foreground service takes over.
+    let _wakeLock = null;
+    async function acquireWakeLock() {
+        if (!('wakeLock' in navigator) || _wakeLock) return;
+        try {
+            _wakeLock = await navigator.wakeLock.request('screen');
+            _wakeLock.addEventListener('release', () => { _wakeLock = null; });
+        } catch(e) {}
+    }
+    function releaseWakeLock() {
+        if (_wakeLock) { _wakeLock.release(); _wakeLock = null; }
+    }
+    document.addEventListener('visibilitychange', async () => {
+        if (document.visibilityState === 'visible' && !audioPlayer.paused) {
+            await acquireWakeLock();
+        }
+    });
+
+    // ── Stream stall recovery — if the server stream drops, restart from position.
+    audioPlayer.addEventListener('stalled', () => {
+        const t = audioPlayer.currentTime;
+        const item = playQueue[currentQueueIndex];
+        if (!item || audioPlayer.paused) return;
+        setTimeout(() => {
+            if (!audioPlayer.paused) return; // recovered on its own
+            audioPlayer.src = `/music/stream/${item.track.id}`;
+            audioPlayer.addEventListener('canplay', function seek() {
+                audioPlayer.currentTime = t;
+                audioPlayer.play().catch(() => {});
+                audioPlayer.removeEventListener('canplay', seek);
+            }, { once: true });
+        }, 2000);
+    });
+
+    // ── Remote control sync — push state every 5 s and on key transitions.
+    // The /remote page polls this so you can control playback from another device.
+    audioPlayer.addEventListener('play',  () => { acquireWakeLock(); pushPlayerState(); });
+    audioPlayer.addEventListener('pause', () => { releaseWakeLock(); pushPlayerState(); });
+    audioPlayer.addEventListener('ended', pushPlayerState);
+    setInterval(pushPlayerState, 5000);
+
+    // Poll for commands sent from the /remote page every 1.5 s
+    setInterval(async () => {
+        try {
+            const r = await fetch('/api/player/poll');
+            const d = await r.json();
+            if (!d.command) return;
+            switch (d.command) {
+                case 'play':   if (audioPlayer.paused && audioPlayer.src)  { audioPlayer.play();  document.getElementById('playPauseBtn').textContent = '⏸️'; } break;
+                case 'pause':  if (!audioPlayer.paused) { audioPlayer.pause(); document.getElementById('playPauseBtn').textContent = '▶️'; } break;
+                case 'toggle': togglePlay(); break;
+                case 'next':   nextTrack();  break;
+                case 'prev':   previousTrack(); break;
+                case 'stop':   clearQueue(); break;
+            }
+        } catch(e) { /* server unreachable — silent */ }
+    }, 1500);
+
+    pickUpLocalStorageQueue();
+});
+
+// Pick up songs added from album page via localStorage
+function pickUpLocalStorageQueue() {
+    // Handle play-now signal from album page (parent direct play)
+    const playNowTracks = JSON.parse(localStorage.getItem('kidmedia_play_now') || 'null');
+    if (playNowTracks && playNowTracks.length > 0) {
+        localStorage.removeItem('kidmedia_play_now');
+        audioPlayer.pause();
+        audioPlayer.src = '';
+        picks = { 0: [], 1: [] };
+        playQueue = playNowTracks.map(track => ({ track, kidIndex: -1 }));
+        currentQueueIndex = 0;
+        playCurrentQueueItem();
+        renderQueue();
+        updateQueueBadge();
+        saveState();
+        return; // don't also process queue_add
+    }
+
+    const pending = JSON.parse(localStorage.getItem('kidmedia_queue_add') || '[]');
+    if (pending.length > 0) {
+        localStorage.removeItem('kidmedia_queue_add');
+        if (parentModeActive) {
+            // Parent mode: append directly to play queue
+            pending.forEach(track => {
+                playQueue.push({ track, kidIndex: -1 });
+            });
+            if (currentQueueIndex === -1 && playQueue.length > 0) {
+                currentQueueIndex = 0;
+                playCurrentQueueItem();
+            }
+        } else {
+            pending.forEach(item => {
+                if (picks[currentTurn].length < MAX_SONGS_PER_KID) {
+                    picks[currentTurn].push(item);
+                    if (picks[currentTurn].length >= MAX_SONGS_PER_KID && !isQueueFull()) {
+                        switchTurn();
+                    }
+                }
+            });
+            if (isQueueFull()) buildAndStartPlayQueue();
+        }
+        renderSongGrid();
+        updateTurnIndicator();
+        renderQueue();
+        updateQueueBadge();
+        saveState();
+    }
+}
+
+async function loadTracks() {
+    try {
+        const resp = await fetch('/music/api/tracks');
+        allTracks = await resp.json();
+    } catch (e) {
+        console.error('Failed to load tracks:', e);
+    }
+}
+
+// ============ QUEUE LIMIT HELPERS ============
+function isQueueFull() {
+    return KIDS.every((_, i) => (picks[i] || []).length >= MAX_SONGS_PER_KID);
+}
+
+function isCurrentKidFull() {
+    return (picks[currentTurn] || []).length >= MAX_SONGS_PER_KID;
+}
+
+// ============ SONG GRID ============
+function renderSongGrid(filter = '') {
+    const grid = document.getElementById('songGrid');
+    const locked = isQueueFull() && !parentModeActive;
+
+    const filtered = filter
+        ? allTracks.filter(t =>
+            t.title.toLowerCase().includes(filter) ||
+            t.artist.toLowerCase().includes(filter) ||
+            t.album.toLowerCase().includes(filter))
+        : allTracks;
+
+    if (locked) {
+        const item = playQueue[currentQueueIndex];
+        const coverUrl = item ? item.track.cover_art : null;
+        const title    = item ? escapeHtml(item.track.title)  : '';
+        const artist   = item ? escapeHtml(item.track.artist) : '';
+        grid.innerHTML = `
+            <div class="now-playing-splash" id="nowPlayingSplash">
+                <div class="splash-art" id="splashArt">
+                    ${coverUrl
+                        ? `<img src="${coverUrl}" alt="Album Art">`
+                        : '<div class="splash-art-placeholder">🎵</div>'}
+                </div>
+                <div class="splash-title"  id="splashTitle">${title}</div>
+                <div class="splash-artist" id="splashArtist">${artist}</div>
+            </div>`;
+        return;
+    }
+
+    grid.innerHTML = filtered.map(track => `
+        <div class="song-tile${parentModeActive ? ' parent-mode-tile' : ''}"
+             onclick="${parentModeActive && parentDirectPlay ? `playNow(${track.id})` : `pickSong(${track.id})`}"
+             data-track-id="${track.id}">
+            ${parentModeActive ? `
+                <label class="song-checkbox-label" onclick="event.stopPropagation()">
+                    <input type="checkbox" class="song-checkbox" value="${track.id}" onchange="updateSelectedSongsCount()">
+                </label>
+            ` : ''}
+            <div class="song-tile-art">
+                ${track.cover_art
+                    ? `<img src="${track.cover_art}" alt="" loading="lazy">`
+                    : '<div class="song-tile-placeholder">🎵</div>'}
+            </div>
+            <div class="song-tile-info">
+                <div class="song-tile-title">${escapeHtml(track.title)}</div>
+                <div class="song-tile-artist">${escapeHtml(track.artist)}</div>
+            </div>
+            ${parentModeActive ? `
+                <div class="song-tile-parent-controls">
+                    ${parentDirectPlay
+                        ? `<button class="song-add-queue" onclick="event.stopPropagation(); addSongToQueue(${track.id})" title="Add to queue">➕</button>`
+                        : `<button class="song-play-now" onclick="event.stopPropagation(); playNow(${track.id})" title="Play now">▶️</button>`
+                    }
+                    <button class="song-edit-btn" onclick="event.stopPropagation(); window.location.href='/music/albums/${track.album_id}/edit'" title="Edit metadata">⚙️</button>
+                </div>
+            ` : ''}
+        </div>
+    `).join('');
+
+    if (filtered.length === 0) {
+        grid.innerHTML = '<div class="empty-state"><p class="empty-message">No songs found</p></div>';
+    }
+}
+
+// ============ TURN SYSTEM ============
+function updateTurnIndicator() {
+    const dot = document.getElementById('turnDot');
+    const name = document.getElementById('turnName');
+    const counter = document.getElementById('turnCounter');
+    const main = document.getElementById('musicMain');
+
+    if (isQueueFull()) {
+        // Neutral state — all picked
+        dot.style.background = '#999';
+        name.textContent = '';
+        if (counter) counter.textContent = '';
+        main.className = 'music-main turn-done';
+        main.style.background = '';
+        return;
+    }
+
+    const kid = KIDS[currentTurn];
+    const remaining = MAX_SONGS_PER_KID - (picks[currentTurn] || []).length;
+    const countColor = COUNT_COLORS[remaining] || '#4CAF50';
+
+    dot.style.background = kid.color;
+    name.textContent = `${kid.emoji} ${kid.name}'s Turn`;
+    name.style.color = '#fff';
+
+    if (counter) {
+        counter.textContent = remaining;
+        counter.style.background = countColor;
+        counter.style.display = 'flex';
+    }
+
+    // Base kids use CSS class; guest (index >= BASE_KIDS_COUNT) uses inline style
+    if (currentTurn < BASE_KIDS_COUNT) {
+        main.className = 'music-main turn-' + currentTurn;
+        main.style.background = '';
+    } else {
+        main.className = 'music-main';
+        main.style.background = kid.color;
+    }
+}
+
+let pickingLocked = false;
+
+function switchTurn() {
+    const newTurn = (currentTurn + 1) % KIDS.length;
+    const kid = KIDS[newTurn];
+
+    // Lock picking and show a full-screen flash for the new kid's turn
+    pickingLocked = true;
+    showTurnSwapOverlay(kid, () => {
+        currentTurn = newTurn;
+        pickingLocked = false;
+        updateTurnIndicator();
+        renderSongGrid();
+    });
+}
+
+function showTurnSwapOverlay(kid, callback) {
+    // Block picking during the swap animation
+    const overlay = document.createElement('div');
+    overlay.className = 'turn-swap-overlay';
+    overlay.style.background = kid.colorLight;
+    overlay.innerHTML = `
+        <div class="turn-swap-content">
+            <div class="turn-swap-emoji">${kid.emoji}</div>
+            <div class="turn-swap-name" style="color: ${kid.color};">${kid.name}'s Turn!</div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    // Flash animation
+    requestAnimationFrame(() => overlay.classList.add('turn-swap-visible'));
+
+    setTimeout(() => {
+        overlay.classList.remove('turn-swap-visible');
+        setTimeout(() => {
+            overlay.remove();
+            callback();
+        }, 300);
+    }, 2500);
+}
+
+// ============ BUILD INTERLEAVED PLAY QUEUE ============
+function buildPlayQueue() {
+    // Round-robin starting from the last picker (reward for waiting).
+    // Works for any number of kids: 2 base + optional guest.
+    playQueue = [];
+    for (let i = 0; i < MAX_SONGS_PER_KID; i++) {
+        for (let k = 0; k < KIDS.length; k++) {
+            const kidIdx = (currentTurn + k) % KIDS.length;
+            if (picks[kidIdx] && i < picks[kidIdx].length) {
+                playQueue.push({ track: picks[kidIdx][i], kidIndex: kidIdx });
+            }
+        }
+    }
+}
+
+function buildAndStartPlayQueue() {
+    buildPlayQueue();
+    currentQueueIndex = 0;
+    // Use a tiny delay to ensure the audio element is ready within the click context
+    const item = playQueue[0];
+    if (!item) return;
+    audioPlayer.src = `/music/stream/${item.track.id}`;
+    const playPromise = audioPlayer.play();
+    if (playPromise) {
+        playPromise.then(() => {
+            updateNowPlaying(item);
+        }).catch(() => {
+            // Autoplay blocked — show tap overlay
+            updateNowPlaying(item);
+            showTapToPlay();
+        });
+    }
+    saveState();
+}
+
+// ============ PIN PROTECTION ============
+// The policy lives in KidLock: the first correct PIN unlocks globally and stays
+// unlocked — across pages and app restarts — until the parent taps the lock.
+// This used to re-prompt on every single button press.
+function pinProtectedAction(action) {
+    KidLock.require(action);
+}
+
+// ============ QUEUE MANAGEMENT ============
+function isAlreadyPicked(trackId) {
+    // Check all kids' picks and the playQueue
+    for (let i = 0; i < KIDS.length; i++) {
+        if (picks[i] && picks[i].some(t => t.id === trackId)) return true;
+    }
+    if (playQueue.some(q => q.track.id === trackId)) return true;
+    return false;
+}
+
+function pickSong(trackId) {
+    if (pickingLocked) return;
+
+    const track = allTracks.find(t => t.id === trackId);
+    if (!track) return;
+
+    // No duplicates allowed
+    if (isAlreadyPicked(trackId)) return;
+
+    if (parentModeActive) {
+        // Parent mode: add to end of playQueue as Parent, play immediately if nothing playing
+        playQueue.push({ track, kidIndex: -1 });
+        if (currentQueueIndex === -1) {
+            currentQueueIndex = 0;
+            playCurrentQueueItem();
+        }
+        renderQueue();
+        updateQueueBadge();
+        saveState();
+        return;
+    }
+
+    // Kid mode
+    if (isQueueFull() || isCurrentKidFull()) return;
+
+    picks[currentTurn].push(track);
+
+    if (isCurrentKidFull()) {
+        if (isQueueFull()) {
+            buildAndStartPlayQueue();
+        } else {
+            switchTurn();
+        }
+    }
+
+    renderSongGrid();
+    updateTurnIndicator();
+    renderQueue();
+    updateQueueBadge();
+    saveState();
+}
+
+function playNow(trackId) {
+    // Parent mode: insert right after current and play it
+    const track = allTracks.find(t => t.id === trackId);
+    if (!track) return;
+
+    const insertAt = currentQueueIndex + 1;
+    playQueue.splice(insertAt, 0, { track, kidIndex: -1 });
+    currentQueueIndex = insertAt;
+    playCurrentQueueItem();
+    renderQueue();
+    updateQueueBadge();
+    saveState();
+}
+
+function playFromHere(index) {
+    // Parent mode: jump to a specific position in the queue
+    if (!parentModeActive) return;
+    if (index < 0 || index >= playQueue.length) return;
+    currentQueueIndex = index;
+    playCurrentQueueItem();
+    renderQueue();
+    saveState();
+}
+
+// ============ DIRECT PLAY (parent mode) ============
+function toggleDirectPlay() {
+    parentDirectPlay = !parentDirectPlay;
+    const btn = document.getElementById('directPlayToggleBtn');
+    if (parentDirectPlay) {
+        btn.textContent = '▶️';
+        btn.title = 'Direct Play — tap to switch to Queue Mode';
+        btn.classList.add('direct-play-active');
+        sessionStorage.setItem('kidmedia_direct_play', 'true');
+        document.querySelectorAll('.album-dp-overlay').forEach(el => el.style.display = 'flex');
+    } else {
+        btn.textContent = '📋';
+        btn.title = 'Queue Mode — tap to switch to Direct Play';
+        btn.classList.remove('direct-play-active');
+        sessionStorage.removeItem('kidmedia_direct_play');
+        document.querySelectorAll('.album-dp-overlay').forEach(el => el.style.display = 'none');
+    }
+    renderSongGrid();
+}
+
+function playAlbumNow(albumId) {
+    // Clear queue and play all tracks from this album in track-number order
+    const albumTracks = allTracks
+        .filter(t => t.album_id === albumId)
+        .sort((a, b) => (a.track_number || 0) - (b.track_number || 0));
+    if (albumTracks.length === 0) return;
+    audioPlayer.pause();
+    audioPlayer.src = '';
+    picks = { 0: [], 1: [] };
+    playQueue = albumTracks.map(track => ({ track, kidIndex: -1 }));
+    currentQueueIndex = 0;
+    playCurrentQueueItem();
+    renderQueue();
+    updateQueueBadge();
+    saveState();
+}
+
+function addAlbumToQueue(albumId) {
+    // Append all album tracks to end of queue in track-number order
+    const albumTracks = allTracks
+        .filter(t => t.album_id === albumId)
+        .sort((a, b) => (a.track_number || 0) - (b.track_number || 0));
+    if (albumTracks.length === 0) return;
+    albumTracks.forEach(track => playQueue.push({ track, kidIndex: -1 }));
+    if (currentQueueIndex === -1 && playQueue.length > 0) {
+        currentQueueIndex = 0;
+        playCurrentQueueItem();
+    }
+    renderQueue();
+    updateQueueBadge();
+    saveState();
+}
+
+function playArtistNow(artistId) {
+    // Clear queue and play all tracks by this artist, grouped by album then track number
+    const artistTracks = allTracks
+        .filter(t => t.artist_id === artistId)
+        .sort((a, b) => a.album_id !== b.album_id ? a.album_id - b.album_id : (a.track_number || 0) - (b.track_number || 0));
+    if (artistTracks.length === 0) return;
+    audioPlayer.pause();
+    audioPlayer.src = '';
+    picks = { 0: [], 1: [] };
+    playQueue = artistTracks.map(track => ({ track, kidIndex: -1 }));
+    currentQueueIndex = 0;
+    playCurrentQueueItem();
+    renderQueue();
+    updateQueueBadge();
+    saveState();
+}
+
+function addArtistToQueue(artistId) {
+    // Append all tracks by this artist to end of queue
+    const artistTracks = allTracks
+        .filter(t => t.artist_id === artistId)
+        .sort((a, b) => a.album_id !== b.album_id ? a.album_id - b.album_id : (a.track_number || 0) - (b.track_number || 0));
+    if (artistTracks.length === 0) return;
+    artistTracks.forEach(track => playQueue.push({ track, kidIndex: -1 }));
+    if (currentQueueIndex === -1 && playQueue.length > 0) {
+        currentQueueIndex = 0;
+        playCurrentQueueItem();
+    }
+    renderQueue();
+    updateQueueBadge();
+    saveState();
+}
+
+function addSongToQueue(trackId) {
+    // Append a single song to end of queue (direct play mode "+" button)
+    const track = allTracks.find(t => t.id === trackId);
+    if (!track) return;
+    playQueue.push({ track, kidIndex: -1 });
+    if (currentQueueIndex === -1) {
+        currentQueueIndex = 0;
+        playCurrentQueueItem();
+    }
+    renderQueue();
+    updateQueueBadge();
+    saveState();
+}
+
+function playCurrentQueueItem() {
+    if (currentQueueIndex < 0 || currentQueueIndex >= playQueue.length) return;
+
+    const item = playQueue[currentQueueIndex];
+    audioPlayer.src = `/music/stream/${item.track.id}`;
+    audioPlayer.play().catch(() => {
+        showTapToPlay();
+    });
+    updateNowPlaying(item);
+    saveState();
+}
+
+function onTrackEnded() {
+    if (currentQueueIndex < playQueue.length - 1) {
+        currentQueueIndex++;
+        playCurrentQueueItem();
+        renderQueue();
+    } else {
+        document.getElementById('playPauseBtn').textContent = '▶️';
+    }
+}
+
+function nextTrack() {
+    if (currentQueueIndex < playQueue.length - 1) {
+        currentQueueIndex++;
+        playCurrentQueueItem();
+        renderQueue();
+    }
+}
+
+function previousTrack() {
+    if (audioPlayer.currentTime > 3) {
+        audioPlayer.currentTime = 0;
+        audioPlayer.play();
+        return;
+    }
+    if (currentQueueIndex > 0) {
+        currentQueueIndex--;
+        playCurrentQueueItem();
+        renderQueue();
+    }
+}
+
+function togglePlay() {
+    if (audioPlayer.paused) {
+        const item = playQueue[currentQueueIndex];
+        if (!item) return;
+        // Browsers block play() from a timer context on a paused element.
+        // Re-assigning src (same trick as next/prev) bypasses that restriction.
+        // We seek back to the saved position once the audio is ready.
+        const savedTime = audioPlayer.currentTime;
+        audioPlayer.src = `/music/stream/${item.track.id}`;
+        audioPlayer.addEventListener('canplay', function seek() {
+            audioPlayer.currentTime = savedTime;
+            audioPlayer.removeEventListener('canplay', seek);
+        }, { once: true });
+        audioPlayer.play().then(() => {
+            document.getElementById('playPauseBtn').textContent = '⏸️';
+            pushPlayerState();
+        }).catch(() => showTapToPlay());
+    } else {
+        audioPlayer.pause();
+        document.getElementById('playPauseBtn').textContent = '▶️';
+        pushPlayerState();
+    }
+}
+
+function clearQueue() {
+    // Remove all guests (highest index first to avoid re-indexing issues)
+    while (KIDS.length > BASE_KIDS_COUNT) {
+        removeGuest(KIDS.length - 1, /* silent= */ true);
+    }
+
+    // Remember who picked first this session so next session they go second
+    const lastFirst = picks[0].length > 0 ? 0 : 1;
+    picks = { 0: [], 1: [] };
+    playQueue = [];
+    currentQueueIndex = -1;
+    // Swap: whoever went first last time goes second now
+    currentTurn = lastFirst === 0 ? 1 : 0;
+    audioPlayer.pause();
+    audioPlayer.src = '';
+    document.getElementById('nowPlaying').style.display = 'none';
+    // Drop the media notification and release the native wake lock — otherwise
+    // an ongoing "now playing" for a queue that no longer exists sticks around.
+    KidMediaNative.endSession();
+
+    renderQueue();
+    updateQueueBadge();
+    updateTurnIndicator();
+    renderSongGrid();
+    updateGuestControls();
+    saveState();
+}
+
+function removeFromQueue(index) {
+    if (index === currentQueueIndex) return;
+    playQueue.splice(index, 1);
+    if (index < currentQueueIndex) currentQueueIndex--;
+    renderQueue();
+    updateQueueBadge();
+    saveState();
+}
+
+// ============ QUEUE RENDERING ============
+function renderQueue() {
+    const list = document.getElementById('queueList');
+
+    // During picking phase, show picks so far
+    if (playQueue.length === 0) {
+        const totalPicks = KIDS.reduce((sum, _, i) => sum + (picks[i] || []).length, 0);
+        if (totalPicks === 0) {
+            list.innerHTML = '<div class="queue-empty">No songs queued yet!</div>';
+            return;
+        }
+        // Show picks in progress
+        let html = '';
+        for (let kidIdx = 0; kidIdx < KIDS.length; kidIdx++) {
+            const kid = KIDS[kidIdx];
+            if (picks[kidIdx].length > 0) {
+                html += `<div class="queue-kid-header" style="background:${kid.color};color:white;">${kid.emoji} ${kid.name}'s Picks</div>`;
+                picks[kidIdx].forEach(track => {
+                    html += `
+                        <div class="queue-item" style="border-left: 5px solid ${kid.color}; background: ${kid.colorLight}30;">
+                            <div class="queue-item-art">
+                                ${track.cover_art ? `<img src="${track.cover_art}" alt="">` : '🎵'}
+                            </div>
+                            <div class="queue-item-info">
+                                <div class="queue-item-title">${escapeHtml(track.title)}</div>
+                            </div>
+                        </div>`;
+                });
+            }
+        }
+        list.innerHTML = html;
+        return;
+    }
+
+    // Playing phase — show interleaved queue
+    list.innerHTML = playQueue.map((item, i) => {
+        const isPlaying = i === currentQueueIndex;
+        const isPast = i < currentQueueIndex;
+        const kid = getKidInfo(item.kidIndex);
+        const clickAction = parentModeActive && !isPlaying ? `onclick="playFromHere(${i})"` : '';
+        const cursorStyle = parentModeActive && !isPlaying ? 'cursor:pointer;' : '';
+        return `
+            <div class="queue-item ${isPlaying ? 'queue-item-playing' : ''} ${isPast ? 'queue-item-past' : ''}"
+                 style="border-left: 5px solid ${kid.color}; background: ${isPlaying ? kid.colorLight + '60' : isPast ? '#f5f5f5' : kid.colorLight + '25'}; ${cursorStyle}"
+                 ${clickAction}>
+                <div class="queue-item-art">
+                    ${item.track.cover_art
+                        ? `<img src="${item.track.cover_art}" alt="">`
+                        : '🎵'}
+                </div>
+                <div class="queue-item-info">
+                    <div class="queue-item-title">${escapeHtml(item.track.title)}</div>
+                    <div class="queue-item-kid" style="color: ${kid.color}; font-weight: bold;">${kid.emoji} ${kid.name}</div>
+                </div>
+                ${isPlaying ? '<span class="queue-item-now">🔊</span>' : ''}
+                ${!isPlaying && !isPast && parentModeActive ? `<button class="queue-remove" onclick="event.stopPropagation(); removeFromQueue(${i})">✕</button>` : ''}
+            </div>
+        `;
+    }).join('');
+
+    const playing = list.querySelector('.queue-item-playing');
+    if (playing) playing.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function updateQueueBadge() {
+    const badge = document.getElementById('queueBadge');
+    const total = playQueue.length > 0 ? playQueue.length - Math.max(0, currentQueueIndex) : picks[0].length + picks[1].length;
+    if (total > 0) {
+        badge.textContent = total;
+        badge.style.display = 'flex';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+// ── Push current playback state to server (for /remote page and Media Session)
+function pushPlayerState() {
+    const item = playQueue[currentQueueIndex];
+    if (!item) return;
+    fetch('/api/player/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            playing:   !audioPlayer.paused,
+            track_id:  item.track.id,
+            title:     item.track.title,
+            artist:    item.track.artist || null,
+            album:     item.track.album  || null,
+            cover_art: item.track.cover_art || null,
+            duration:  audioPlayer.duration  || item.track.duration || null,
+            position:  audioPlayer.currentTime || 0,
+        })
+    }).catch(() => {});
+}
+
+// ============ NOW PLAYING ============
+function updateNowPlaying(item) {
+    const np = document.getElementById('nowPlaying');
+    const art = document.getElementById('nowPlayingArt');
+    const title = document.getElementById('nowPlayingTitle');
+    const artist = document.getElementById('nowPlayingArtist');
+    const kid = getKidInfo(item.kidIndex);
+
+    np.style.display = 'flex';
+    np.style.background = kid.colorLight;
+
+    if (item.track.cover_art) {
+        art.innerHTML = `<img src="${item.track.cover_art}" alt="">`;
+    } else {
+        art.innerHTML = '🎵';
+    }
+    title.textContent = item.track.title;
+    artist.textContent = `${kid.emoji} ${item.track.artist}`;
+    document.getElementById('playPauseBtn').textContent = '⏸️';
+
+    // Push the new track to the lock screen / notification / watch.
+    KidMediaNative.trackChanged();
+
+    pushPlayerState();
+
+    // Keep the now-playing splash in sync if it's currently visible
+    const splashArt    = document.getElementById('splashArt');
+    const splashTitle  = document.getElementById('splashTitle');
+    const splashArtist = document.getElementById('splashArtist');
+    if (splashArt) {
+        splashArt.innerHTML = item.track.cover_art
+            ? `<img src="${item.track.cover_art}" alt="Album Art">`
+            : '<div class="splash-art-placeholder">🎵</div>';
+    }
+    if (splashTitle)  splashTitle.textContent  = item.track.title;
+    if (splashArtist) splashArtist.textContent = item.track.artist;
+}
+
+function showTapToPlay() {
+    const overlay = document.createElement('div');
+    overlay.id = 'autoplay-overlay';
+    overlay.innerHTML = '<div class="autoplay-prompt">🎵<br>Tap to Play!</div>';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;cursor:pointer;';
+    overlay.querySelector('.autoplay-prompt').style.cssText = 'font-size:64px;color:white;text-align:center;padding:40px;border-radius:30px;background:rgba(255,255,255,0.15);';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', () => {
+        audioPlayer.play();
+        document.getElementById('playPauseBtn').textContent = '⏸️';
+        overlay.remove();
+    });
+}
+
+// ============ QUEUE SIDEBAR TOGGLE ============
+function toggleQueue() {
+    const sidebar = document.getElementById('queueSidebar');
+    const overlay = document.getElementById('queueOverlay');
+    const isOpen = sidebar.classList.contains('queue-open');
+
+    if (isOpen) {
+        sidebar.classList.remove('queue-open');
+        overlay.classList.remove('queue-overlay-visible');
+    } else {
+        sidebar.classList.add('queue-open');
+        overlay.classList.add('queue-overlay-visible');
+    }
+}
+
+// ============ IN-PAGE ALBUM / ARTIST SHEET ============
+// Opening an album used to navigate to /music/albums/<id>, which tears down this
+// page — and with it the <audio> element — so the music stopped dead every time
+// anyone looked at a record, and picks had to be handed back through
+// localStorage. The sheet keeps browsing on one page: playback never stops and
+// the picks go straight into the queue that's already in memory.
+
+function albumTracksFor(albumId) {
+    return allTracks
+        .filter(t => t.album_id === albumId)
+        .sort((a, b) => (a.track_number || 0) - (b.track_number || 0));
+}
+
+function artistTracksFor(artistId) {
+    return allTracks
+        .filter(t => t.artist_id === artistId)
+        .sort((a, b) => a.album_id !== b.album_id
+            ? a.album_id - b.album_id
+            : (a.track_number || 0) - (b.track_number || 0));
+}
+
+function openAlbumSheet(albumId, event) {
+    if (event) event.preventDefault();
+    const tracks = albumTracksFor(albumId);
+    if (tracks.length === 0) return false;
+    openMediaSheet({
+        title: tracks[0].album || 'Album',
+        subtitle: tracks[0].artist || '',
+        cover: tracks[0].cover_art,
+        tracks: tracks,
+        onPlayAll: () => playAlbumNow(albumId),
+        onQueueAll: () => addAlbumToQueue(albumId)
+    });
+    return false;  // cancel the <a> navigation
+}
+
+function openArtistSheet(artistId, event) {
+    if (event) event.preventDefault();
+    const tracks = artistTracksFor(artistId);
+    if (tracks.length === 0) return false;
+    openMediaSheet({
+        title: tracks[0].artist || 'Artist',
+        subtitle: `${tracks.length} song${tracks.length === 1 ? '' : 's'}`,
+        cover: tracks[0].cover_art,
+        tracks: tracks,
+        showAlbum: true,
+        onPlayAll: () => playArtistNow(artistId),
+        onQueueAll: () => addArtistToQueue(artistId)
+    });
+    return false;
+}
+
+let sheetState = null;
+
+function openMediaSheet(opts) {
+    sheetState = opts;
+
+    document.getElementById('sheetArt').innerHTML = opts.cover
+        ? `<img src="${opts.cover}" alt="">`
+        : '🎵';
+    document.getElementById('sheetTitle').textContent = opts.title;
+    document.getElementById('sheetSubtitle').textContent = opts.subtitle || '';
+
+    // Bulk actions are a grown-up thing — kids pick one song at a time, and the
+    // turn counter is the whole point.
+    document.getElementById('sheetActions').innerHTML = parentModeActive
+        ? '<button class="sheet-btn sheet-btn-play" onclick="sheetPlayAll()">▶️ Play All</button>' +
+          '<button class="sheet-btn" onclick="sheetQueueAll()">➕ Queue All</button>'
+        : '';
+
+    renderSheetTracks();
+
+    const overlay = document.getElementById('mediaSheet');
+    overlay.style.display = 'flex';
+    requestAnimationFrame(() => overlay.classList.add('sheet-open'));
+}
+
+function renderSheetTracks() {
+    if (!sheetState) return;
+
+    // Everyone has had their turn — say so rather than showing a list of songs
+    // that silently do nothing when tapped.
+    if (!parentModeActive && isQueueFull()) {
+        document.getElementById('sheetTracks').innerHTML =
+            '<div class="sheet-note">🎶 Everyone has picked!<br><span>Listen to the playlist first.</span></div>';
+        return;
+    }
+
+    document.getElementById('sheetTracks').innerHTML = sheetState.tracks.map((t, i) => {
+        const picked = isAlreadyPicked(t.id);
+        const label = sheetState.showAlbum
+            ? escapeHtml(t.album || '')
+            : escapeHtml(t.artist || '');
+        return `
+            <div class="sheet-track${picked ? ' sheet-track-picked' : ''}"
+                 ${parentModeActive ? '' : `onclick="sheetPick(${t.id})"`}>
+                <div class="sheet-track-num">${t.track_number || i + 1}</div>
+                <div class="sheet-track-info">
+                    <div class="sheet-track-title">${escapeHtml(t.title)}</div>
+                    <div class="sheet-track-sub">${label}</div>
+                </div>
+                ${parentModeActive
+                    ? `<div class="sheet-track-btns">
+                           <button class="sheet-mini" onclick="event.stopPropagation(); playNow(${t.id})" title="Play now">▶️</button>
+                           <button class="sheet-mini" onclick="event.stopPropagation(); addSongToQueue(${t.id})" title="Add to queue">➕</button>
+                       </div>`
+                    : `<div class="sheet-track-mark">${picked ? '✅' : '➕'}</div>`}
+            </div>`;
+    }).join('');
+}
+
+function sheetPick(trackId) {
+    if (isAlreadyPicked(trackId) || pickingLocked) return;
+    if (isQueueFull() || isCurrentKidFull()) return;
+    pickSong(trackId);
+    // Close so the turn-swap flash (and the now-playing splash, once everyone
+    // has picked) isn't hidden behind the sheet.
+    closeMediaSheet();
+}
+
+function sheetPlayAll() {
+    if (sheetState && sheetState.onPlayAll) sheetState.onPlayAll();
+    closeMediaSheet();
+}
+
+function sheetQueueAll() {
+    if (sheetState && sheetState.onQueueAll) sheetState.onQueueAll();
+    closeMediaSheet();
+}
+
+function closeMediaSheet() {
+    const overlay = document.getElementById('mediaSheet');
+    overlay.classList.remove('sheet-open');
+    setTimeout(() => { overlay.style.display = 'none'; }, 200);
+    sheetState = null;
+}
+
+// ============ VIEW TOGGLE (songs → albums → artists → songs) ============
+function toggleView() {
+    const btn = document.getElementById('viewToggleBtn');
+    const songGrid = document.getElementById('songGrid');
+    const albumGrid = document.getElementById('albumGrid');
+    const artistGrid = document.getElementById('artistGrid');
+
+    if (currentView === 'songs') {
+        currentView = 'albums';
+        songGrid.style.display = 'none';
+        albumGrid.style.display = 'grid';
+        artistGrid.style.display = 'none';
+        btn.textContent = '🎤';
+        btn.title = 'Show Artists';
+        if (parentModeActive) { hideSongBulkBar(); showAlbumBulkBar(); }
+    } else if (currentView === 'albums') {
+        currentView = 'artists';
+        songGrid.style.display = 'none';
+        albumGrid.style.display = 'none';
+        artistGrid.style.display = 'grid';
+        btn.textContent = '🎵';
+        btn.title = 'Show All Songs';
+        if (parentModeActive) { hideAlbumBulkBar(); hideSongBulkBar(); }
+    } else {
+        currentView = 'songs';
+        songGrid.style.display = 'grid';
+        albumGrid.style.display = 'none';
+        artistGrid.style.display = 'none';
+        btn.textContent = '💿';
+        btn.title = 'Show Albums';
+        if (parentModeActive) { hideAlbumBulkBar(); showSongBulkBar(); }
+    }
+}
+
+// ============ PARENT MODE ============
+// Driven entirely by the global lock (see kidmedia-lock.js) — this page no
+// longer owns a mode of its own, so it can't disagree with the rest of the app.
+function enterParentMode() {
+    parentModeActive = true;
+
+    // Set parent background (clear any guest inline style first)
+    const main = document.getElementById('musicMain');
+    main.style.background = '';
+    main.className = 'music-main turn-parent';
+
+    // Update turn indicator for parent
+    const dot = document.getElementById('turnDot');
+    const name = document.getElementById('turnName');
+    const counter = document.getElementById('turnCounter');
+    dot.style.background = PARENT_USER.color;
+    name.textContent = `${PARENT_USER.emoji} Parent Mode`;
+    name.style.color = '#333';
+    if (counter) counter.style.display = 'none';
+
+    // Show search bar
+    document.getElementById('searchBar').style.display = 'flex';
+
+    // Show parent controls on albums
+    document.querySelectorAll('.parent-controls').forEach(el => el.style.display = 'flex');
+
+    // Show the direct play toggle button
+    const dpBtn = document.getElementById('directPlayToggleBtn');
+    dpBtn.style.display = 'flex';
+
+    // Restore direct play mode if it was active before a reload
+    if (sessionStorage.getItem('kidmedia_direct_play') === 'true') {
+        parentDirectPlay = true;
+        dpBtn.textContent = '▶️';
+        dpBtn.title = 'Direct Play — tap to switch to Queue Mode';
+        dpBtn.classList.add('direct-play-active');
+        document.querySelectorAll('.album-dp-overlay').forEach(el => el.style.display = 'flex');
+    }
+
+    // Re-render to show play-now buttons/checkboxes and clickable queue
+    renderSongGrid();
+    renderQueue();
+
+    // Show the correct bulk action bar for current view
+    showBulkActions();
+    updateGuestControls();  // hides the Add Guest button and guest chips in parent mode
+}
+
+function exitParentMode() {
+    parentModeActive = false;
+
+    // Reset and hide direct play toggle
+    parentDirectPlay = false;
+    sessionStorage.removeItem('kidmedia_direct_play');
+    const dpBtn = document.getElementById('directPlayToggleBtn');
+    dpBtn.style.display = 'none';
+    dpBtn.textContent = '📋';
+    dpBtn.classList.remove('direct-play-active');
+    document.querySelectorAll('.album-dp-overlay').forEach(el => el.style.display = 'none');
+
+    document.getElementById('searchBar').style.display = 'none';
+    document.querySelectorAll('.parent-controls').forEach(el => el.style.display = 'none');
+    clearSearch();
+    updateTurnIndicator();
+    renderSongGrid();
+    renderQueue();
+    hideBulkActions();
+    updateGuestControls();
+    document.querySelectorAll('.album-checkbox').forEach(cb => cb.checked = false);
+}
+
+// ============ GUEST USER ============
+function showGuestModal() {
+    document.getElementById('guestModal').style.display = 'flex';
+    document.getElementById('guestNameInput').value = '';
+    // Gray out colors already in use by existing guests
+    const usedColors = new Set(KIDS.slice(BASE_KIDS_COUNT).map(k => k.color));
+    const grid = document.getElementById('guestColorGrid');
+    grid.innerHTML = GUEST_COLORS.map((gc, i) => {
+        const used = usedColors.has(gc.color);
+        return `<button class="guest-color-swatch${used ? ' used' : ''}"
+            style="background:${gc.color};" title="${gc.label}${used ? ' (in use)' : ''}"
+            ${used ? 'disabled' : `onclick="confirmAddGuest(${i})"`}>${gc.emoji}</button>`;
+    }).join('');
+}
+
+function hideGuestModal() {
+    document.getElementById('guestModal').style.display = 'none';
+}
+
+function confirmAddGuest(colorIndex) {
+    hideGuestModal();
+    const gc = GUEST_COLORS[colorIndex];
+    const nameInput = document.getElementById('guestNameInput').value.trim();
+    const name = nameInput || 'Guest';
+    const guestIdx = KIDS.length;
+    KIDS.push({ name, color: gc.color, colorLight: gc.colorLight, emoji: gc.emoji });
+    picks[guestIdx] = [];
+    updateGuestControls();
+    updateTurnIndicator();
+    renderSongGrid();
+}
+
+// Remove a specific guest by their index in the KIDS array.
+// Shifts picks and queue references for any guests with a higher index.
+function removeGuest(kidIdx, silent = false) {
+    if (kidIdx < BASE_KIDS_COUNT || kidIdx >= KIDS.length) return;
+
+    // If it's this guest's turn, roll back to the last base kid
+    if (currentTurn === kidIdx) {
+        currentTurn = BASE_KIDS_COUNT - 1;
+    } else if (currentTurn > kidIdx) {
+        currentTurn--;
+    }
+
+    // Drop this guest's songs from the queue; re-index higher guests
+    playQueue = playQueue
+        .filter(q => q.kidIndex !== kidIdx)
+        .map(q => ({ ...q, kidIndex: q.kidIndex > kidIdx ? q.kidIndex - 1 : q.kidIndex }));
+
+    // Shift picks map down by one for all guests above the removed one
+    delete picks[kidIdx];
+    for (let i = kidIdx; i < KIDS.length - 1; i++) {
+        picks[i] = picks[i + 1] || [];
+    }
+    delete picks[KIDS.length - 1];
+
+    KIDS.splice(kidIdx, 1);
+
+    if (!silent) {
+        updateGuestControls();
+        updateTurnIndicator();
+        renderSongGrid();
+        renderQueue();
+        updateQueueBadge();
+    }
+}
+
+// Renders the "Add Guest" button state and the row of active guest chips.
+// Replaces the old updateGuestButton() which only handled one guest.
+function updateGuestControls() {
+    const btn = document.getElementById('addGuestBtn');
+    if (!btn) return;
+
+    const usedColors = new Set(KIDS.slice(BASE_KIDS_COUNT).map(k => k.color));
+    const availableColors = GUEST_COLORS.filter(gc => !usedColors.has(gc.color));
+
+    // Show "Add Guest" only when colors remain and not in parent mode
+    if (parentModeActive || availableColors.length === 0) {
+        btn.style.display = 'none';
+    } else {
+        btn.textContent = '👤 Add Guest';
+        btn.style.background = '';
+        btn.style.display = 'flex';
+        btn.onclick = showGuestModal;
+    }
+
+    // Render individual guest chips
+    const bar = document.getElementById('guestChipsBar');
+    const guests = KIDS.slice(BASE_KIDS_COUNT);
+    if (guests.length === 0) {
+        bar.style.display = 'none';
+        bar.innerHTML = '';
+        return;
+    }
+    bar.style.display = 'flex';
+    bar.innerHTML = guests.map((g, relIdx) => {
+        const kidIdx = BASE_KIDS_COUNT + relIdx;
+        return `<div class="guest-chip" style="background:${g.color};">
+            <span>${g.emoji} ${g.name}</span>
+            <button class="guest-chip-remove" onclick="removeGuest(${kidIdx})" title="Remove ${g.name}">✕</button>
+        </div>`;
+    }).join('');
+}
+
+// ============ SEARCH (parent mode) ============
+function filterSongs() {
+    const query = document.getElementById('searchInput').value.toLowerCase().trim();
+    renderSongGrid(query);
+}
+
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    renderSongGrid();
+}
+
+// ============ BULK ACTIONS (parent mode) ============
+
+// Show the appropriate bulk bar based on current view
+function showBulkActions() {
+    if (currentView === 'songs') {
+        showSongBulkBar();
+        hideAlbumBulkBar();
+    } else if (currentView === 'albums') {
+        showAlbumBulkBar();
+        hideSongBulkBar();
+    } else {
+        // artists view — no bulk actions
+        hideSongBulkBar();
+        hideAlbumBulkBar();
+    }
+}
+
+function hideBulkActions() {
+    hideSongBulkBar();
+    hideAlbumBulkBar();
+}
+
+// --- Song bulk bar ---
+function showSongBulkBar() {
+    let bar = document.getElementById('songBulkActionBar');
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'songBulkActionBar';
+        bar.className = 'bulk-action-bar';
+        bar.innerHTML = `
+            <button onclick="bulkEditSongs()" class="bulk-button">✏️ Edit Selected</button>
+            <button onclick="bulkDeleteSongs()" class="bulk-button delete-button">🗑️ Delete Selected</button>
+            <span id="selectedSongsCount" class="selected-count">0 selected</span>
+        `;
+        document.getElementById('songGrid').before(bar);
+    }
+    bar.style.display = 'flex';
+}
+
+function hideSongBulkBar() {
+    const bar = document.getElementById('songBulkActionBar');
+    if (bar) bar.style.display = 'none';
+}
+
+function updateSelectedSongsCount() {
+    const count = document.querySelectorAll('.song-checkbox:checked').length;
+    const el = document.getElementById('selectedSongsCount');
+    if (el) el.textContent = `${count} selected`;
+}
+
+function bulkEditSongs() {
+    const selected = Array.from(document.querySelectorAll('.song-checkbox:checked')).map(cb => cb.value);
+    if (selected.length === 0) { alert('Select at least one song'); return; }
+    window.location.href = `/music/tracks/bulk-edit?ids=${selected.join(',')}`;
+}
+
+function bulkDeleteSongs() {
+    const selected = Array.from(document.querySelectorAll('.song-checkbox:checked')).map(cb => cb.value);
+    if (selected.length === 0) { alert('Select at least one song'); return; }
+    if (confirm(`Delete ${selected.length} song(s)?`)) deleteTracks(selected);
+}
+
+async function deleteTracks(ids) {
+    try {
+        const r = await fetch('/music/api/tracks/bulk-delete', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ track_ids: ids })
+        });
+        const result = await r.json();
+        if (result.status === 'success') { alert(`Deleted ${result.deleted_count} song(s)`); location.reload(); }
+        else alert('Delete failed: ' + result.message);
+    } catch (e) { alert('Error: ' + e); }
+}
+
+// --- Album bulk bar ---
+function showAlbumBulkBar() {
+    let bulkBar = document.getElementById('bulkActionBar');
+    if (!bulkBar) {
+        bulkBar = document.createElement('div');
+        bulkBar.id = 'bulkActionBar';
+        bulkBar.className = 'bulk-action-bar';
+        bulkBar.innerHTML = `
+            <button onclick="bulkEdit()" class="bulk-button">✏️ Edit Selected</button>
+            <button onclick="bulkDelete()" class="bulk-button delete-button">🗑️ Delete Selected</button>
+            <span id="selectedCount" class="selected-count">0 selected</span>
+        `;
+        document.getElementById('albumGrid').before(bulkBar);
+    }
+    bulkBar.style.display = 'flex';
+    document.querySelectorAll('.album-checkbox').forEach(cb => {
+        cb.addEventListener('change', updateSelectedCount);
+    });
+}
+
+function hideAlbumBulkBar() {
+    const bar = document.getElementById('bulkActionBar');
+    if (bar) bar.style.display = 'none';
+}
+
+function updateSelectedCount() {
+    const count = document.querySelectorAll('.album-checkbox:checked').length;
+    const el = document.getElementById('selectedCount');
+    if (el) el.textContent = `${count} selected`;
+}
+
+function editAlbum(albumId) { window.location.href = `/music/albums/${albumId}/edit`; }
+
+function bulkEdit() {
+    const selected = Array.from(document.querySelectorAll('.album-checkbox:checked')).map(cb => cb.value);
+    if (selected.length === 0) { alert('Select at least one album'); return; }
+    window.location.href = `/music/albums/bulk-edit?ids=${selected.join(',')}`;
+}
+
+function bulkDelete() {
+    const selected = Array.from(document.querySelectorAll('.album-checkbox:checked')).map(cb => cb.value);
+    if (selected.length === 0) { alert('Select at least one album'); return; }
+    if (confirm(`Delete ${selected.length} album(s)?`)) deleteAlbums(selected);
+}
+
+async function deleteAlbums(ids) {
+    try {
+        const r = await fetch('/music/api/albums/bulk-delete', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ album_ids: ids })
+        });
+        const result = await r.json();
+        if (result.status === 'success') { alert(`Deleted ${result.deleted_count} album(s)`); location.reload(); }
+        else alert('Delete failed: ' + result.message);
+    } catch (e) { alert('Error: ' + e); }
+}
+
+async function scanLibrary() {
+    const button = event.target.closest('button');
+    button.disabled = true;
+    button.innerHTML = '<span class="button-icon">⏳</span><span class="button-text">Scanning...</span>';
+    try {
+        const r = await fetch('/api/scan', { method: 'POST' });
+        const result = await r.json();
+        if (result.status === 'success') { alert(`Scan complete! Added ${result.stats.tracks_added} new tracks.`); location.reload(); }
+        else alert('Scan failed: ' + result.message);
+    } catch (e) { alert('Error: ' + e); }
+    finally { button.disabled = false; }
+}
+
+// ============ UTILS ============
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}
+

@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block header_nav %}
+<a href="/music/" class="back-button">⬅️ Back to Library</a>
+{% endblock %}
+
+{% block content %}
+<div class="bulk-edit-page">
+    <h2 class="page-title">Bulk Edit {{ albums|length }} Albums</h2>
+    
+    <div class="selected-albums">
+        <h3>Selected Albums:</h3>
+        <ul class="album-list">
+            {% for album in albums %}
+            <li>{{ album.title }} - {{ album.album_artist or (album.artist.name if album.artist else "Unknown") }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    
+    <form id="bulkEditForm" class="edit-form">
+        <div class="form-section">
+            <h3>Update Common Fields</h3>
+            <p class="help-text">Only fill in fields you want to change. Empty fields will not be updated.</p>
+            
+            <div class="form-group">
+                <label for="album_artist">Album Artist:</label>
+                <input type="text" id="album_artist" name="album_artist" class="form-input" placeholder="Leave empty to keep individual values">
+            </div>
+            
+            <div class="form-group">
+                <label for="year">Year:</label>
+                <input type="number" id="year" name="year" class="form-input" placeholder="Leave empty to keep individual values">
+            </div>
+            
+            <div class="form-group">
+                <label for="genre">Genre:</label>
+                <input type="text" id="genre" name="genre" class="form-input" placeholder="Leave empty to keep individual values">
+            </div>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="save-button">💾 Update All Selected</button>
+            <a href="/music/" class="cancel-button">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+const albumIds = {{ albums|map(attribute='id')|list|tojson }};
+
+document.getElementById('bulkEditForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = {
+        album_ids: albumIds,
+        album_artist: document.getElementById('album_artist').value || null,
+        year: document.getElementById('year').value || null,
+        genre: document.getElementById('genre').value || null
+    };
+    
+    // Remove null values
+    Object.keys(formData).forEach(key => {
+        if (formData[key] === null || formData[key] === '') {
+            delete formData[key];
+        }
+    });
+    
+    if (Object.keys(formData).length === 1) {
+        alert('Please fill in at least one field to update');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/music/albums/bulk-edit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+        });
+        
+        const result = await response.json();
+        if (result.status === 'success') {
+            alert(`Updated ${result.updated_count} album(s)!`);
+            window.location.href = '/music/';
+        } else {
+            alert('Error: ' + result.message);
+        }
+    } catch (error) {
+        alert('Error updating albums: ' + error);
+    }
+});
+</script>
+
+<style>
+.bulk-edit-page {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.selected-albums {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 30px;
+}
+
+.selected-albums h3 {
+    color: #667eea;
+    margin-bottom: 15px;
+}
+
+.album-list {
+    list-style: none;
+    padding: 0;
+}
+
+.album-list li {
+    padding: 10px;
+    background: white;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    border-left: 4px solid #667eea;
+}
+
+.edit-form {
+    background: #f8f9fa;
+    padding: 30px;
+    border-radius: 15px;
+}
+
+.form-section h3 {
+    margin-bottom: 10px;
+    color: #667eea;
+}
+
+.help-text {
+    color: #666;
+    font-style: italic;
+    margin-bottom: 20px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+    color: #333;
+}
+
+.form-input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-size: 16px;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.form-actions {
+    display: flex;
+    gap: 15px;
+    margin-top: 30px;
+}
+
+.save-button, .cancel-button {
+    padding: 15px 40px;
+    border-radius: 10px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.save-button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+}
+
+.cancel-button {
+    background: #ddd;
+    color: #333;
+    border: 2px solid #999;
+}
+</style>
+{% endblock %}
+

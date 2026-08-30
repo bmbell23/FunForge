@@ -1,0 +1,48 @@
+services:
+  kidmedia:
+    build:
+      context: .
+      target: development
+    container_name: kidmedia
+    ports:
+      - "8006:8006"
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./static:/app/static
+      # Mount kid media music library (read-write so deleted files are actually removed)
+      - /mnt/boston/media/kid-media/music:/music:rw
+      # Mount kid media podcast library
+      - /mnt/boston/media/kid-media/podcasts:/podcasts:rw
+    environment:
+      - PYTHONPATH=/app/src
+      - DATABASE_URL=sqlite:///./data/kid_media.db
+      - MUSIC_DIR=/music
+      - PODCAST_DIR=/podcasts
+      - HOST=0.0.0.0
+      - PORT=8006
+    restart: unless-stopped
+    networks:
+      - kidmedia-network
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8006/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+networks:
+  kidmedia-network:
+    driver: bridge
+

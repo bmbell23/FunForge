@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block header_nav %}
+<a href="/music/" class="back-button">⬅️ Back to Library</a>
+{% endblock %}
+
+{% block content %}
+<div class="bulk-edit-page">
+    <h2 class="page-title">Bulk Edit {{ tracks|length }} Songs</h2>
+
+    <p class="help-text" style="text-align:center; color:#666; margin-bottom:20px;">
+        Edit each song's title and track number, then click <strong>Save All</strong>.
+    </p>
+
+    <form id="bulkEditSongsForm" class="edit-form">
+        <div class="track-edit-list">
+            {% for track in tracks %}
+            <div class="track-bulk-edit-item">
+                <div class="track-bulk-meta">
+                    <span class="track-bulk-album">{{ track.album.title if track.album else "Unknown Album" }}</span>
+                </div>
+                <div class="track-bulk-fields">
+                    <input type="hidden" name="track_id_{{ track.id }}" value="{{ track.id }}">
+                    <input type="text" name="title_{{ track.id }}" value="{{ track.title }}"
+                           class="form-input track-title-input" placeholder="Song title" required>
+                    <input type="number" name="track_number_{{ track.id }}" value="{{ track.track_number or '' }}"
+                           class="form-input track-num-input" placeholder="#" min="1">
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="save-button">💾 Save All</button>
+            <a href="/music/" class="cancel-button">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+const trackIds = {{ tracks|map(attribute='id')|list|tojson }};
+
+document.getElementById('bulkEditSongsForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const updates = trackIds.map(id => ({
+        track_id: id,
+        title: document.querySelector(`[name="title_${id}"]`).value.trim(),
+        track_number: parseInt(document.querySelector(`[name="track_number_${id}"]`).value) || null
+    })).filter(u => u.title);
+
+    try {
+        const response = await fetch('/music/tracks/bulk-edit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ updates })
+        });
+
+        const result = await response.json();
+        if (result.status === 'success') {
+            alert(`Updated ${result.updated_count} song(s)!`);
+            window.location.href = '/music/';
+        } else {
+            alert('Error: ' + result.message);
+        }
+    } catch (error) {
+        alert('Error updating songs: ' + error);
+    }
+});
+</script>
+
+<style>
+.bulk-edit-page { max-width: 900px; margin: 0 auto; }
+
+.track-edit-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 30px; }
+
+.track-bulk-edit-item {
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 14px 18px;
+    border-left: 4px solid #667eea;
+}
+
+.track-bulk-meta {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 8px;
+    font-style: italic;
+}
+
+.track-bulk-fields {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.track-title-input { flex: 1; }
+.track-num-input { width: 70px; flex-shrink: 0; }
+
+.form-actions { display: flex; gap: 15px; margin-top: 20px; }
+
+.save-button, .cancel-button {
+    padding: 15px 40px; border-radius: 10px; font-size: 18px;
+    font-weight: bold; cursor: pointer; text-decoration: none; display: inline-block;
+}
+.save-button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white; border: none;
+}
+.cancel-button { background: #ddd; color: #333; border: 2px solid #999; }
+</style>
+{% endblock %}
+

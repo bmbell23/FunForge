@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block header_nav %}
+<a href="/" class="back-button">⬅️ Home</a>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <h2 class="page-title">Videos</h2>
+
+    <div class="stats-grid" style="margin-bottom: 28px;">
+        <div class="stat-card videos-card">
+            <div class="stat-icon">🎬</div>
+            <div class="stat-number">1</div>
+            <div class="stat-label">Kid Turn Per Video</div>
+        </div>
+
+        <div class="stat-card videos-card">
+            <div class="stat-icon">🔒</div>
+            <div class="stat-number">On</div>
+            <div class="stat-label">Playback Lock</div>
+        </div>
+
+        <div class="stat-card videos-card">
+            <div class="stat-icon">🔁</div>
+            <div class="stat-number">2</div>
+            <div class="stat-label">Kids Taking Turns</div>
+        </div>
+    </div>
+
+    <div class="empty-state" style="background:#ffffffcc; border-radius:20px;">
+        <p class="empty-message">Video library screen is ready.</p>
+        <p style="font-size:22px;color:#555;">Next step is wiring your actual video files and player flow, just like podcasts.</p>
+    </div>
+</div>
+{% endblock %}

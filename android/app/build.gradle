@@ -1,0 +1,41 @@
+plugins {
+    id 'com.android.application'
+}
+
+// versionCode is supplied by ../../build-apk.sh, which derives it from
+// ../../version.txt and can never go backwards (see the script's comment).
+// Falling back to 1 keeps a bare `./gradlew assembleDebug` working.
+def vcode = (System.getenv("VERSION_CODE") ?: "1").toInteger()
+def vname = System.getenv("VERSION_NAME") ?: ("0.0." + vcode)
+
+android {
+    compileSdk 34
+    namespace 'com.kidmedia.app'
+
+    defaultConfig {
+        applicationId "com.kidmedia.app"
+        minSdk 24
+        targetSdk 34
+        versionCode vcode
+        versionName vname
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    // MediaSessionCompat + MediaButtonReceiver + MediaStyle notification, so
+    // music keeps playing with the screen locked and responds to hardware /
+    // headphone / lock-screen media buttons (see PlaybackService).
+    implementation 'androidx.media:media:1.7.0'
+}

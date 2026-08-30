@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block header_nav %}
+<a href="/music/" class="back-button">⬅️ Back to Library</a>
+{% endblock %}
+
+{% block content %}
+<div class="edit-album-page">
+    <h2 class="page-title">Edit Album: {{ album.title }}</h2>
+    
+    <form method="POST" action="/music/albums/{{ album.id }}/edit" enctype="multipart/form-data" class="edit-form">
+        <div class="form-section">
+            <h3>Album Information</h3>
+            
+            <div class="form-group">
+                <label for="title">Album Title:</label>
+                <input type="text" id="title" name="title" value="{{ album.title }}" required class="form-input">
+            </div>
+            
+            <div class="form-group">
+                <label for="album_artist">Album Artist:</label>
+                <input type="text" id="album_artist" name="album_artist" value="{{ album.album_artist or '' }}" required class="form-input">
+            </div>
+            
+            <div class="form-group">
+                <label for="year">Year:</label>
+                <input type="number" id="year" name="year" value="{{ album.year or '' }}" class="form-input">
+            </div>
+            
+            <div class="form-group">
+                <label for="genre">Genre:</label>
+                <input type="text" id="genre" name="genre" value="{{ album.genre or '' }}" class="form-input">
+            </div>
+            
+            <div class="form-group">
+                <label for="cover_art">Album Cover:</label>
+                {% if album.cover_art_path %}
+                <div class="current-cover">
+                    <img src="{{ album.cover_art_path }}" alt="{{ album.title }}" style="max-width: 200px; border-radius: 10px;">
+                </div>
+                {% endif %}
+                <input type="file" id="cover_art" name="cover_art" accept="image/*" class="form-input">
+                <small>Upload a new image to replace the current cover</small>
+            </div>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="save-button">💾 Save Changes</button>
+            <a href="/music/" class="cancel-button">Cancel</a>
+        </div>
+    </form>
+    
+    <div class="tracks-section">
+        <h3>Tracks</h3>
+        <div class="track-list-edit">
+            {% for track in album.tracks %}
+            <div class="track-edit-item" id="track-{{ track.id }}">
+                <div class="track-edit-info">
+                    <input type="text" value="{{ track.title }}" id="track-title-{{ track.id }}" class="track-title-input">
+                    <input type="number" value="{{ track.track_number or '' }}" id="track-number-{{ track.id }}" class="track-number-input" placeholder="#" style="width: 60px;">
+                </div>
+                <div class="track-edit-actions">
+                    <button onclick="saveTrack({{ track.id }})" class="track-save-btn">💾</button>
+                    <button onclick="deleteTrack({{ track.id }})" class="track-delete-btn">🗑️</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<script>
+async function saveTrack(trackId) {
+    const title = document.getElementById(`track-title-${trackId}`).value;
+    const trackNumber = document.getElementById(`track-number-${trackId}`).value;
+    
+    try {
+        const formData = new FormData();
+        formData.append('title', title);
+        if (trackNumber) {
+            formData.append('track_number', trackNumber);
+        }
+        
+        const response = await fetch(`/music/tracks/${trackId}/edit`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        if (result.status === 'success') {
+            alert('Track updated!');
+        } else {
+            alert('Error: ' + result.message);
+        }
+    } catch (error) {
+        alert('Error saving track: ' + error);
+    }
+}
+
+async function deleteTrack(trackId) {
+    if (!confirm('Are you sure you want to delete this track?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/music/tracks/${trackId}/delete`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        if (result.status === 'success') {
+            document.getElementById(`track-${trackId}`).remove();
+            alert('Track deleted!');
+        } else {
+            alert('Error: ' + result.message);
+        }
+    } catch (error) {
+        alert('Error deleting track: ' + error);
+    }
+}
+</script>
+
+<style>
+.edit-album-page {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.edit-form {
+    background: #f8f9fa;
+    padding: 30px;
+    border-radius: 15px;
+    margin-bottom: 30px;
+}
+
+.form-section h3 {
+    margin-bottom: 20px;
+    color: #667eea;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+    color: #333;
+}
+
+.form-input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-size: 16px;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.form-actions {
+    display: flex;
+    gap: 15px;
+    margin-top: 30px;
+}
+
+.save-button, .cancel-button {
+    padding: 15px 40px;
+    border-radius: 10px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.save-button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+}
+
+.cancel-button {
+    background: #ddd;
+    color: #333;
+    border: 2px solid #999;
+}
+
+.tracks-section {
+    background: #f8f9fa;
+    padding: 30px;
+    border-radius: 15px;
+}
+
+.tracks-section h3 {
+    margin-bottom: 20px;
+    color: #667eea;
+}
+
+.track-edit-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background: white;
+    border-radius: 10px;
+    margin-bottom: 10px;
+}
+
+.track-edit-info {
+    display: flex;
+    gap: 10px;
+    flex: 1;
+}
+
+.track-title-input {
+    flex: 1;
+    padding: 8px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+}
+
+.track-number-input {
+    padding: 8px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+}
+
+.track-edit-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.track-save-btn, .track-delete-btn {
+    padding: 8px 15px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 18px;
+}
+
+.track-save-btn {
+    background: #4CAF50;
+    color: white;
+}
+
+.track-delete-btn {
+    background: #f44336;
+    color: white;
+}
+</style>
+{% endblock %}
+

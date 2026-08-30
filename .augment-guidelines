@@ -1,0 +1,35 @@
+---
+alwaysApply: true
+description: KidMedia agent guidelines — extends shared server guidelines
+---
+
+# AI Agent Guidelines for KidMedia
+
+**Shared server guidelines** (iptables fix, container inventory, Tailscale IP, forbidden ops):
+→ `/home/brandon/projects/.augment-guidelines`
+
+---
+
+## 🚨 Critical Rules (Always Apply)
+
+- **NEVER**: `sudo reboot`, `shutdown`, `docker-compose down`, `DROP DATABASE`, `pg_resetwal`
+- **Tailscale IP**: `100.69.184.113`
+- **Container**: `kidmedia` — http://100.69.184.113:8006
+- **After any redeploy**, if externally unreachable: check for stale iptables DNAT rules:
+  `sudo iptables-save | grep DNAT` — remove any duplicate entries for the service port
+
+## Restarting Services
+
+`docker restart` / `docker-compose restart` FAIL on this server. Use:
+```bash
+PID=$(docker inspect kidmedia --format '{{.State.Pid}}')
+kill $PID
+cd /home/brandon/projects/KidMedia
+docker-compose up -d
+```
+
+## Project Details
+
+- **Directory**: `/home/brandon/projects/KidMedia/`
+- **Port**: 8006 → 8006
+- **URL**: http://100.69.184.113:8006
