@@ -209,7 +209,7 @@ def run(page, errors):
         picks[0] = allTracks.slice(0, 5);
         picks[1] = allTracks.slice(5, 10);
         buildAndStartPlayQueue();
-        updateTurnIndicator(); renderQueue(); updateQueueBadge(); renderSongGrid();
+        updateTurnIndicator(); renderQueue(); renderSongGrid();
     }""")
     page.wait_for_timeout(2500)
     assert not page.evaluate("audioPlayer.paused"), "queue did not start playing"

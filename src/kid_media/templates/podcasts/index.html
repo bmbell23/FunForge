@@ -46,7 +46,6 @@
     <div class="controls-bar">
         <button class="queue-hamburger" onclick="toggleQueue()" id="queueHamburger">
             <span class="hamburger-icon">☰</span>
-            <span class="queue-badge" id="queueBadge" style="display:none;">0</span>
         </button>
 
         <div class="turn-indicator" id="turnIndicator">
@@ -168,7 +167,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (restored) {
         updateTurnIndicator();
         renderQueue();
-        updateQueueBadge();
         if (currentQueueIndex >= 0 && currentQueueIndex < playQueue.length) {
             updateNowPlaying(playQueue[currentQueueIndex]);
         }
@@ -306,7 +304,6 @@ function pickUpLocalStorageQueue() {
             playCurrentQueueItem();
             updateTurnIndicator();
             renderQueue();
-            updateQueueBadge();
             updateShowGridVisibility();
             saveState();
             if (nonceKey) sessionStorage.setItem(nonceKey, 'done');
@@ -325,7 +322,6 @@ function pickUpLocalStorageQueue() {
         currentQueueIndex = 0;
         playCurrentQueueItem();
         renderQueue();
-        updateQueueBadge();
         saveState();
         return;
     }
@@ -348,7 +344,6 @@ function pickUpLocalStorageQueue() {
 
     updateTurnIndicator();
     renderQueue();
-    updateQueueBadge();
     updateShowGridVisibility();
     saveState();
 }
@@ -481,7 +476,6 @@ function clearQueue() {
     resetPlayerCard();
     KidMediaNative.endSession();
     renderQueue();
-    updateQueueBadge();
     updateShowGridVisibility();
     if (shouldAdvanceTurn) {
         switchTurn();
@@ -501,7 +495,6 @@ function completeKidTurn() {
     resetPlayerCard();
     KidMediaNative.endSession();
     renderQueue();
-    updateQueueBadge();
     updateShowGridVisibility();
     switchTurn();
     saveState();
@@ -600,13 +593,6 @@ function renderQueue() {
             </div>
         </div>`;
     }).join('');
-}
-
-function updateQueueBadge() {
-    const badge = document.getElementById('queueBadge');
-    const count = parentModeActive ? playQueue.length : (playQueue.length > 0 ? 1 : 0);
-    badge.textContent = count;
-    badge.style.display = count > 0 ? 'flex' : 'none';
 }
 
 function playFromHere(index) {
@@ -791,7 +777,6 @@ function sheetPickEpisode(episodeId) {
     playCurrentQueueItem();
     updateTurnIndicator();
     renderQueue();
-    updateQueueBadge();
     updateShowGridVisibility();
     saveState();
     closeMediaSheet();
@@ -805,7 +790,6 @@ function sheetPlayEpisode(episodeId) {
     currentQueueIndex = insertAt;
     playCurrentQueueItem();
     renderQueue();
-    updateQueueBadge();
     saveState();
 }
 
@@ -818,7 +802,6 @@ function sheetQueueEpisode(episodeId) {
         playCurrentQueueItem();
     }
     renderQueue();
-    updateQueueBadge();
     saveState();
 }
 
@@ -831,7 +814,6 @@ function sheetPlayAll() {
     currentQueueIndex = 0;
     playCurrentQueueItem();
     renderQueue();
-    updateQueueBadge();
     saveState();
     closeMediaSheet();
 }
@@ -844,7 +826,6 @@ function sheetQueueAll() {
         playCurrentQueueItem();
     }
     renderQueue();
-    updateQueueBadge();
     saveState();
     closeMediaSheet();
 }
