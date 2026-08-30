@@ -9,20 +9,29 @@
         <button class="queue-close" onclick="toggleQueue()">✕</button>
     </div>
 
-    <!-- Playback controls pinned to sidebar top -->
-    <div class="sidebar-controls">
-        <button class="qc-btn" onclick="pinProtectedAction(previousTrack)" title="Previous">⏮️</button>
-        <button class="qc-btn" onclick="pinProtectedAction(togglePlay)" id="playPauseBtn" title="Play/Pause">▶️</button>
-        <button class="qc-btn" onclick="pinProtectedAction(nextTrack)" title="Skip">⏭️</button>
-        <button class="qc-btn qc-btn-stop" onclick="pinProtectedAction(clearQueue)" title="Stop & Clear">⏹️</button>
-    </div>
+    <!-- Player card — now playing and the transport controls in one surface. -->
+    <div class="player-card player-card-idle" id="nowPlaying">
+        <div class="pc-head">
+            <div class="pc-art" id="nowPlayingArt">🎵</div>
+            <div class="pc-meta">
+                <div class="pc-title" id="nowPlayingTitle">Nothing playing</div>
+                <div class="pc-artist" id="nowPlayingArtist">Pick some songs!</div>
+            </div>
+        </div>
 
-    <!-- Now Playing (inside sidebar) -->
-    <div class="sidebar-now-playing" id="nowPlaying" style="display:none;">
-        <div class="sidebar-np-art" id="nowPlayingArt">🎵</div>
-        <div class="sidebar-np-info">
-            <div class="sidebar-np-title" id="nowPlayingTitle"></div>
-            <div class="sidebar-np-artist" id="nowPlayingArtist"></div>
+        <div class="pc-scrub">
+            <div class="pc-bar"><div class="pc-bar-fill" id="pcBarFill"></div></div>
+            <div class="pc-times">
+                <span id="pcElapsed">0:00</span>
+                <span id="pcTotal">0:00</span>
+            </div>
+        </div>
+
+        <div class="pc-controls">
+            <button class="pc-btn" onclick="pinProtectedAction(previousTrack)" title="Previous" aria-label="Previous">⏮️</button>
+            <button class="pc-btn pc-btn-main" id="playPauseBtn" onclick="pinProtectedAction(togglePlay)" title="Play/Pause" aria-label="Play or pause">▶️</button>
+            <button class="pc-btn" onclick="pinProtectedAction(nextTrack)" title="Skip" aria-label="Skip">⏭️</button>
+            <button class="pc-btn pc-btn-stop" onclick="pinProtectedAction(clearQueue)" title="Stop &amp; Clear" aria-label="Stop and clear">⏹️</button>
         </div>
     </div>
 
@@ -386,6 +395,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     audioPlayer.addEventListener('play',  () => { acquireWakeLock(); pushPlayerState(); });
     audioPlayer.addEventListener('pause', () => { releaseWakeLock(); pushPlayerState(); });
     audioPlayer.addEventListener('ended', pushPlayerState);
+
+    // Player-card progress bar.
+    audioPlayer.addEventListener('timeupdate', updateProgress);
+    audioPlayer.addEventListener('loadedmetadata', updateProgress);
+    audioPlayer.addEventListener('play',  () => document.getElementById('playPauseBtn').textContent = '⏸️');
+    audioPlayer.addEventListener('pause', () => document.getElementById('playPauseBtn').textContent = '▶️');
     setInterval(pushPlayerState, 5000);
 
     // Poll for commands sent from the /remote page every 1.5 s
@@ -548,14 +563,18 @@ function updateTurnIndicator() {
     const main = document.getElementById('musicMain');
 
     if (isQueueFull()) {
-        // Neutral state — all picked
-        dot.style.background = '#999';
+        // Everyone has picked — the picking UI is over, so take it off screen
+        // entirely. Leaving it up meant a stray grey dot and an empty orange
+        // counter bubble sat there for the whole playlist.
+        dot.style.display = 'none';
         name.textContent = '';
-        if (counter) counter.textContent = '';
+        if (counter) counter.style.display = 'none';
         main.className = 'music-main turn-done';
         main.style.background = '';
         return;
     }
+
+    dot.style.display = '';
 
     const kid = KIDS[currentTurn];
     const remaining = MAX_SONGS_PER_KID - (picks[currentTurn] || []).length;
@@ -923,7 +942,7 @@ function clearQueue() {
     currentTurn = lastFirst === 0 ? 1 : 0;
     audioPlayer.pause();
     audioPlayer.src = '';
-    document.getElementById('nowPlaying').style.display = 'none';
+    resetPlayerCard();
     // Drop the media notification and release the native wake lock — otherwise
     // an ongoing "now playing" for a queue that no longer exists sticks around.
     KidMediaNative.endSession();
@@ -979,16 +998,19 @@ function renderQueue() {
         return;
     }
 
-    // Playing phase — show interleaved queue
+    // Playing phase — show the interleaved queue. The current track is left out:
+    // the player card above already shows it, and having both meant the same
+    // song appeared twice in a 320px column.
     list.innerHTML = playQueue.map((item, i) => {
-        const isPlaying = i === currentQueueIndex;
+        if (i === currentQueueIndex) return '';
         const isPast = i < currentQueueIndex;
+        const isNext = i === currentQueueIndex + 1;
         const kid = getKidInfo(item.kidIndex);
-        const clickAction = parentModeActive && !isPlaying ? `onclick="playFromHere(${i})"` : '';
-        const cursorStyle = parentModeActive && !isPlaying ? 'cursor:pointer;' : '';
+        const clickAction = parentModeActive ? `onclick="playFromHere(${i})"` : '';
+        const cursorStyle = parentModeActive ? 'cursor:pointer;' : '';
         return `
-            <div class="queue-item ${isPlaying ? 'queue-item-playing' : ''} ${isPast ? 'queue-item-past' : ''}"
-                 style="border-left: 5px solid ${kid.color}; background: ${isPlaying ? kid.colorLight + '60' : isPast ? '#f5f5f5' : kid.colorLight + '25'}; ${cursorStyle}"
+            <div class="queue-item ${isPast ? 'queue-item-past' : ''}" ${isNext ? 'data-next="1"' : ''}
+                 style="border-left: 5px solid ${kid.color}; background: ${isPast ? '#f0f0f4' : kid.colorLight + '3d'}; ${cursorStyle}"
                  ${clickAction}>
                 <div class="queue-item-art">
                     ${item.track.cover_art
@@ -999,19 +1021,23 @@ function renderQueue() {
                     <div class="queue-item-title">${escapeHtml(item.track.title)}</div>
                     <div class="queue-item-kid" style="color: ${kid.color}; font-weight: bold;">${kid.emoji} ${kid.name}</div>
                 </div>
-                ${isPlaying ? '<span class="queue-item-now">🔊</span>' : ''}
-                ${!isPlaying && !isPast && parentModeActive ? `<button class="queue-remove" onclick="event.stopPropagation(); removeFromQueue(${i})">✕</button>` : ''}
+                ${!isPast && parentModeActive ? `<button class="queue-remove" onclick="event.stopPropagation(); removeFromQueue(${i})">✕</button>` : ''}
             </div>
         `;
     }).join('');
 
-    const playing = list.querySelector('.queue-item-playing');
-    if (playing) playing.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Keep the next song in view as the queue advances past the played ones.
+    const next = list.querySelector('[data-next]');
+    if (next) next.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function updateQueueBadge() {
     const badge = document.getElementById('queueBadge');
-    const total = playQueue.length > 0 ? playQueue.length - Math.max(0, currentQueueIndex) : picks[0].length + picks[1].length;
+    // Songs still to come, matching what the queue list now shows (the current
+    // track lives in the player card, not the list).
+    const total = playQueue.length > 0
+        ? playQueue.length - Math.max(0, currentQueueIndex) - 1
+        : picks[0].length + picks[1].length;
     if (total > 0) {
         badge.textContent = total;
         badge.style.display = 'flex';
@@ -1048,8 +1074,9 @@ function updateNowPlaying(item) {
     const artist = document.getElementById('nowPlayingArtist');
     const kid = getKidInfo(item.kidIndex);
 
-    np.style.display = 'flex';
-    np.style.background = kid.colorLight;
+    np.classList.remove('player-card-idle');
+    // Tints the play button and the progress bar with whoever's song this is.
+    np.style.setProperty('--pc-accent', kid.color);
 
     if (item.track.cover_art) {
         art.innerHTML = `<img src="${item.track.cover_art}" alt="">`;
@@ -1076,6 +1103,38 @@ function updateNowPlaying(item) {
     }
     if (splashTitle)  splashTitle.textContent  = item.track.title;
     if (splashArtist) splashArtist.textContent = item.track.artist;
+}
+
+// ── Player card progress ────────────────────────────────────────────────────
+function fmtTime(seconds) {
+    if (!isFinite(seconds) || seconds < 0) return '0:00';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function updateProgress() {
+    const fill = document.getElementById('pcBarFill');
+    if (!fill) return;
+    const dur = audioPlayer.duration;
+    const pos = audioPlayer.currentTime || 0;
+    fill.style.width = (isFinite(dur) && dur > 0)
+        ? `${Math.min(100, (pos / dur) * 100)}%`
+        : '0%';
+    document.getElementById('pcElapsed').textContent = fmtTime(pos);
+    document.getElementById('pcTotal').textContent = fmtTime(dur);
+}
+
+/** Put the player card back to "nothing playing" (queue cleared). */
+function resetPlayerCard() {
+    const np = document.getElementById('nowPlaying');
+    np.classList.add('player-card-idle');
+    np.style.removeProperty('--pc-accent');
+    document.getElementById('nowPlayingArt').innerHTML = '🎵';
+    document.getElementById('nowPlayingTitle').textContent = 'Nothing playing';
+    document.getElementById('nowPlayingArtist').textContent = 'Pick some songs!';
+    document.getElementById('playPauseBtn').textContent = '▶️';
+    updateProgress();
 }
 
 function showTapToPlay() {

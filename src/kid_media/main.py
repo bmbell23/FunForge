@@ -136,27 +136,17 @@ app.include_router(videos.router, tags=["videos"])
 
 
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request, db: Session = Depends(get_db)):
-    """Home page - main dashboard."""
-    from .models import Album, Artist, Track, PodcastShow, PodcastEpisode
+async def home(request: Request):
+    """Home page — three big buttons: Songs, Stories, Videos.
 
-    album_count = db.query(Album).count()
-    artist_count = db.query(Artist).count()
-    track_count = db.query(Track).count()
-    show_count = db.query(PodcastShow).count()
-    episode_count = db.query(PodcastEpisode).count()
-
+    No longer counts rows: the home page used to show a library-statistics grid,
+    which meant five COUNT(*) queries on every load of a page a toddler taps
+    straight through.
+    """
     return templates.TemplateResponse(
         request,
         "index.html",
-        {
-            "title": settings.app_name,
-            "album_count": album_count,
-            "artist_count": artist_count,
-            "track_count": track_count,
-            "show_count": show_count,
-            "episode_count": episode_count,
-        }
+        {"title": settings.app_name},
     )
 
 

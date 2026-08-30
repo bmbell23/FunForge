@@ -1,55 +1,22 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="dashboard">
-    <h2 class="page-title">Welcome to KidMedia!</h2>
-
-    <div class="home-section-grid">
-        <a href="/music/" class="home-section-button">
-            <span class="home-section-icon">🎵</span>
-            <span class="home-section-text">Sounds</span>
-        </a>
-        <a href="/podcasts/" class="home-section-button">
-            <span class="home-section-icon">🎙️</span>
-            <span class="home-section-text">Podcasts</span>
-        </a>
-        <a href="/videos/" class="home-section-button">
-            <span class="home-section-icon">🎬</span>
-            <span class="home-section-text">Videos</span>
-        </a>
-    </div>
-
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-icon">🎵</div>
-            <div class="stat-number">{{ track_count }}</div>
-            <div class="stat-label">Songs</div>
-        </div>
-
-        <div class="stat-card">
-            <div class="stat-icon">💿</div>
-            <div class="stat-number">{{ album_count }}</div>
-            <div class="stat-label">Albums</div>
-        </div>
-
-        <div class="stat-card">
-            <div class="stat-icon">🎤</div>
-            <div class="stat-number">{{ artist_count }}</div>
-            <div class="stat-label">Artists</div>
-        </div>
-
-        <div class="stat-card">
-            <div class="stat-icon">🎙️</div>
-            <div class="stat-number">{{ show_count }}</div>
-            <div class="stat-label">Podcast Shows</div>
-        </div>
-
-        <div class="stat-card">
-            <div class="stat-icon">📻</div>
-            <div class="stat-number">{{ episode_count }}</div>
-            <div class="stat-label">Episodes</div>
-        </div>
-    </div>
+{# Three doors, nothing else. The old home page also carried a five-card grid of
+   library statistics — song/album/artist/show/episode counts — which is exactly
+   the sort of thing a three-year-old cannot use and has to look past to find the
+   button they wanted. #}
+<div class="home">
+    <a href="/music/" class="home-tile home-tile-songs">
+        <span class="home-tile-icon">🎵</span>
+        <span class="home-tile-text">Songs</span>
+    </a>
+    <a href="/podcasts/" class="home-tile home-tile-stories">
+        <span class="home-tile-icon">🎧</span>
+        <span class="home-tile-text">Stories</span>
+    </a>
+    <a href="/videos/" class="home-tile home-tile-videos">
+        <span class="home-tile-icon">🎬</span>
+        <span class="home-tile-text">Videos</span>
+    </a>
 </div>
 {% endblock %}
-

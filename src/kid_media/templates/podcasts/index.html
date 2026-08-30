@@ -5,27 +5,38 @@
 <div class="queue-overlay" id="queueOverlay" onclick="toggleQueue()"></div>
 <div class="queue-sidebar" id="queueSidebar">
     <div class="queue-header">
-        <span class="queue-title">🎙️ Up Next</span>
+        <span class="queue-title">🎧 Up Next</span>
         <button class="queue-close" onclick="toggleQueue()">✕</button>
     </div>
 
-    <div class="sidebar-controls">
-        <button class="qc-btn" onclick="pinProtectedAction(previousEpisode)" title="Previous">⏮️</button>
-        <button class="qc-btn" onclick="pinProtectedAction(togglePlay)" id="playPauseBtn" title="Play/Pause">▶️</button>
-        <button class="qc-btn" onclick="pinProtectedAction(nextEpisode)" title="Skip">⏭️</button>
-        <button class="qc-btn qc-btn-stop" onclick="pinProtectedAction(clearQueue)" title="Stop & Clear">⏹️</button>
-    </div>
+    <!-- Player card — now playing and the transport controls in one surface. -->
+    <div class="player-card player-card-idle" id="nowPlaying">
+        <div class="pc-head">
+            <div class="pc-art" id="nowPlayingArt">🎧</div>
+            <div class="pc-meta">
+                <div class="pc-title" id="nowPlayingTitle">Nothing playing</div>
+                <div class="pc-artist" id="nowPlayingArtist">Pick a story!</div>
+            </div>
+        </div>
 
-    <div class="sidebar-now-playing" id="nowPlaying" style="display:none;">
-        <div class="sidebar-np-art" id="nowPlayingArt">🎙️</div>
-        <div class="sidebar-np-info">
-            <div class="sidebar-np-title" id="nowPlayingTitle"></div>
-            <div class="sidebar-np-artist" id="nowPlayingArtist"></div>
+        <div class="pc-scrub">
+            <div class="pc-bar"><div class="pc-bar-fill" id="pcBarFill"></div></div>
+            <div class="pc-times">
+                <span id="pcElapsed">0:00</span>
+                <span id="pcTotal">0:00</span>
+            </div>
+        </div>
+
+        <div class="pc-controls">
+            <button class="pc-btn" onclick="pinProtectedAction(previousEpisode)" title="Previous" aria-label="Previous">⏮️</button>
+            <button class="pc-btn pc-btn-main" id="playPauseBtn" onclick="pinProtectedAction(togglePlay)" title="Play/Pause" aria-label="Play or pause">▶️</button>
+            <button class="pc-btn" onclick="pinProtectedAction(nextEpisode)" title="Skip" aria-label="Skip">⏭️</button>
+            <button class="pc-btn pc-btn-stop" onclick="pinProtectedAction(clearQueue)" title="Stop &amp; Clear" aria-label="Stop and clear">⏹️</button>
         </div>
     </div>
 
     <div class="queue-list" id="queueList">
-        <div class="queue-empty">No episodes queued yet!</div>
+        <div class="queue-empty">No stories queued yet!</div>
     </div>
 </div>
 
@@ -52,7 +63,7 @@
 
     <!-- Search bar (parent mode only) -->
     <div class="search-bar" id="searchBar" style="display:none;">
-        <input type="text" id="searchInput" placeholder="Search shows..." oninput="filterShows()">
+        <input type="text" id="searchInput" placeholder="Search stories..." oninput="filterShows()">
         <button class="search-clear" onclick="clearSearch()">✕</button>
     </div>
 
@@ -82,10 +93,10 @@
 
         {% if not shows %}
         <div class="empty-state" id="emptyState" style="width:100%;">
-            <p class="empty-message">No podcasts found!</p>
+            <p class="empty-message">No stories found!</p>
             <button onclick="scanPodcasts()" class="big-button scan-button">
                 <span class="button-icon">🔍</span>
-                <span class="button-text">Scan for Podcasts</span>
+                <span class="button-text">Scan for Stories</span>
             </button>
         </div>
         {% endif %}
@@ -184,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!item) return null;
             return {
                 title:  item.episode.title,
-                artist: item.episode.show_title || 'Podcast',
+                artist: item.episode.show_title || 'Story',
                 album:  'KidMedia',
                 cover:  item.episode.cover_art || ''
             };
@@ -227,6 +238,12 @@ document.addEventListener('DOMContentLoaded', () => {
     audioPlayer.addEventListener('play',  pushPlayerState);
     audioPlayer.addEventListener('pause', pushPlayerState);
     audioPlayer.addEventListener('ended', pushPlayerState);
+
+    // Player-card progress bar and play/pause glyph.
+    audioPlayer.addEventListener('timeupdate', updateProgress);
+    audioPlayer.addEventListener('loadedmetadata', updateProgress);
+    audioPlayer.addEventListener('play',  () => document.getElementById('playPauseBtn').textContent = '⏸️');
+    audioPlayer.addEventListener('pause', () => document.getElementById('playPauseBtn').textContent = '▶️');
 
     pickUpLocalStorageQueue();
 
@@ -461,7 +478,7 @@ function clearQueue() {
     pendingUserGestureResume = false;
     audioPlayer.pause();
     audioPlayer.src = '';
-    document.getElementById('nowPlaying').style.display = 'none';
+    resetPlayerCard();
     KidMediaNative.endSession();
     renderQueue();
     updateQueueBadge();
@@ -481,7 +498,7 @@ function completeKidTurn() {
     pendingUserGestureResume = false;
     audioPlayer.pause();
     audioPlayer.src = '';
-    document.getElementById('nowPlaying').style.display = 'none';
+    resetPlayerCard();
     KidMediaNative.endSession();
     renderQueue();
     updateQueueBadge();
@@ -497,16 +514,19 @@ function updateNowPlaying(item) {
     const titleEl = document.getElementById('nowPlayingTitle');
     const artistEl = document.getElementById('nowPlayingArtist');
 
-    if (!item) { np.style.display = 'none'; return; }
+    if (!item) { resetPlayerCard(); return; }
 
     const ep = item.episode;
     const coverArt = ep.cover_art;
+    const kid = item.kidIndex >= 0 ? KIDS[item.kidIndex] : PARENT_USER;
     art.innerHTML = coverArt
-        ? `<img src="${coverArt}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">`
-        : (ep.emoji || '🎙️');
+        ? `<img src="${coverArt}" alt="">`
+        : (ep.emoji || '🎧');
     titleEl.textContent = ep.title;
     artistEl.textContent = ep.show_title || '';
-    np.style.display = 'flex';
+    np.classList.remove('player-card-idle');
+    // Tints the play button and the progress bar with whoever's story this is.
+    np.style.setProperty('--pc-accent', kid.color);
 
     document.getElementById('playPauseBtn').textContent = audioPlayer.paused ? '▶️' : '⏸️';
 
@@ -546,40 +566,33 @@ function renderQueue() {
     normalizeKidPlaybackState();
     const list = document.getElementById('queueList');
     if (playQueue.length === 0) {
-        list.innerHTML = '<div class="queue-empty">No episodes queued yet!</div>';
+        list.innerHTML = '<div class="queue-empty">No stories queued yet!</div>';
         return;
     }
 
-    if (!parentModeActive) {
-        const item = playQueue[0];
-        const ep = item.episode;
-        const kid = item.kidIndex >= 0 ? KIDS[item.kidIndex] : PARENT_USER;
-        const coverArt = ep.cover_art;
-        list.innerHTML = `<div class="queue-item queue-item-active">
-            <div class="queue-item-art">
-                ${coverArt
-                    ? `<img src="${coverArt}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">`
-                    : `<span style="font-size:22px;">${ep.emoji || '🎙️'}</span>`}
-            </div>
-            <div class="queue-item-info">
-                <div class="queue-item-title">${escapeHtml(ep.title)}</div>
-                <div class="queue-item-meta" style="color:${kid.color};">${kid.emoji} ${ep.show_title || ''}</div>
-            </div>
-        </div>`;
+    // The current episode is deliberately not listed: the player card above
+    // already shows it, and in kid mode (one pick each) it was the ONLY row, so
+    // the sidebar showed the same story twice.
+    const upcoming = playQueue
+        .map((item, idx) => ({ item, idx }))
+        .filter(({ idx }) => idx !== currentQueueIndex);
+
+    if (upcoming.length === 0) {
+        list.innerHTML = '<div class="queue-empty">Nothing else queued.</div>';
         return;
     }
 
-    list.innerHTML = playQueue.map((item, idx) => {
+    list.innerHTML = upcoming.map(({ item, idx }) => {
         const ep = item.episode;
         const kid = item.kidIndex >= 0 ? KIDS[item.kidIndex] : PARENT_USER;
-        const isCurrent = idx === currentQueueIndex;
+        const isPast = idx < currentQueueIndex;
         const coverArt = ep.cover_art;
-        return `<div class="queue-item${isCurrent ? ' queue-item-active' : ''}"
-                     onclick="playFromHere(${idx})" style="cursor:pointer;">
+        return `<div class="queue-item${isPast ? ' queue-item-past' : ''}"
+                     ${parentModeActive ? `onclick="playFromHere(${idx})" style="cursor:pointer;"` : ''}>
             <div class="queue-item-art">
                 ${coverArt
-                    ? `<img src="${coverArt}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">`
-                    : `<span style="font-size:22px;">${ep.emoji || '🎙️'}</span>`}
+                    ? `<img src="${coverArt}" alt="">`
+                    : `<span style="font-size:22px;">${ep.emoji || '🎧'}</span>`}
             </div>
             <div class="queue-item-info">
                 <div class="queue-item-title">${escapeHtml(ep.title)}</div>
@@ -639,7 +652,7 @@ function updateTurnIndicator() {
     }
 
     dot.style.background = kid.color;
-    name.textContent = `${kid.emoji} ${kid.name}'s Turn — pick a podcast!`;
+    name.textContent = `${kid.emoji} ${kid.name}'s Turn — pick a story!`;
     name.style.color = '#fff';
     if (counter) {
         counter.textContent = remaining;
@@ -710,7 +723,7 @@ function openShowSheet(showId, event) {
     document.getElementById('sheetArt').innerHTML = eps[0].cover_art
         ? `<img src="${eps[0].cover_art}" alt="">`
         : '🎙️';
-    document.getElementById('sheetTitle').textContent = eps[0].show_title || 'Podcast';
+    document.getElementById('sheetTitle').textContent = eps[0].show_title || 'Story';
     document.getElementById('sheetSubtitle').textContent =
         `${eps.length} episode${eps.length === 1 ? '' : 's'}`;
 
@@ -897,6 +910,33 @@ function showTapToPlay() {
 
     document.addEventListener('pointerdown', resume, { once: true, capture: true });
     document.addEventListener('touchstart', resume, { once: true, capture: true });
+}
+
+// ============ PLAYER CARD PROGRESS ============
+function updateProgress() {
+    const fill = document.getElementById('pcBarFill');
+    if (!fill) return;
+    const dur = audioPlayer.duration;
+    const pos = audioPlayer.currentTime || 0;
+    fill.style.width = (isFinite(dur) && dur > 0)
+        ? `${Math.min(100, (pos / dur) * 100)}%`
+        : '0%';
+    document.getElementById('pcElapsed').textContent =
+        isFinite(pos) ? formatDuration(pos) : '0:00';
+    document.getElementById('pcTotal').textContent =
+        isFinite(dur) && dur > 0 ? formatDuration(dur) : '0:00';
+}
+
+/** Put the player card back to "nothing playing" (queue cleared / turn over). */
+function resetPlayerCard() {
+    const np = document.getElementById('nowPlaying');
+    np.classList.add('player-card-idle');
+    np.style.removeProperty('--pc-accent');
+    document.getElementById('nowPlayingArt').innerHTML = '🎧';
+    document.getElementById('nowPlayingTitle').textContent = 'Nothing playing';
+    document.getElementById('nowPlayingArtist').textContent = 'Pick a story!';
+    document.getElementById('playPauseBtn').textContent = '▶️';
+    updateProgress();
 }
 
 // ============ REMOTE PLAYER STATE ============

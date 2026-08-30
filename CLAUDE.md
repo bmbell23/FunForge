@@ -88,6 +88,13 @@ Pages must not keep their own parent-mode flag — subscribe with `KidLock.onCha
 and gate actions with `KidLock.require(fn)`. PIN comes from `PARENT_PIN` (default
 `1234`), injected by `base.html`; it is a toddler lock, not a security boundary.
 
+### Screen names
+
+The kid-facing names are **Songs** (`/music/`), **Stories** (`/podcasts/` —
+podcasts and audiobooks) and **Videos** (`/videos/`). URLs and model names still
+say "podcast"; only the copy says Stories. The home page is those three tiles and
+nothing else — no stats, no counts.
+
 ### Keeping playback alive across the UI
 
 Browsing must not navigate away from a page that is playing — a page load destroys

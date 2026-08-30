@@ -184,6 +184,64 @@ def run(page, errors):
     assert state["locked"], "turn was not locked after a pick"
     ok("kid picks a podcast episode from the sheet and it plays immediately")
 
+    # ---- home page ----------------------------------------------------------
+    section("Home page")
+    go("/")
+    tiles = [el.strip() for el in page.locator(".home-tile-text").all_inner_texts()]
+    assert tiles == ["Songs", "Stories", "Videos"], f"home tiles are {tiles}"
+    assert page.locator(".stats-grid").count() == 0, "the library-stats grid is still there"
+    assert page.evaluate("document.body.scrollHeight - innerHeight") <= 0, \
+        "home page scrolls — the three doors should fit on one screen"
+    ok("home is three tiles (Songs / Stories / Videos) that fit without scrolling")
+
+    # ---- player card --------------------------------------------------------
+    section("Player card")
+    page.evaluate("localStorage.setItem('kidmedia_unlocked','true')")
+    go("/music/")
+    card = page.locator("#nowPlaying")
+    assert "player-card-idle" in (card.get_attribute("class") or ""), \
+        "player card does not start idle"
+    assert page.locator(".sidebar-controls").count() == 0, "the old black control strip is back"
+    ok("idle player card, no separate control strip")
+
+    # Fill both kids' picks so the interleaved queue builds and starts.
+    page.evaluate("""() => {
+        picks[0] = allTracks.slice(0, 5);
+        picks[1] = allTracks.slice(5, 10);
+        buildAndStartPlayQueue();
+        updateTurnIndicator(); renderQueue(); updateQueueBadge(); renderSongGrid();
+    }""")
+    page.wait_for_timeout(2500)
+    assert not page.evaluate("audioPlayer.paused"), "queue did not start playing"
+    assert "player-card-idle" not in (card.get_attribute("class") or ""), "card stayed idle"
+    assert page.evaluate("document.getElementById('nowPlaying').style.getPropertyValue('--pc-accent')"), \
+        "player card was not tinted with the current picker's colour"
+    assert page.evaluate("parseFloat(document.getElementById('pcBarFill').style.width) > 0"), \
+        "progress bar never moved"
+    assert page.evaluate("document.getElementById('pcTotal').textContent") != "0:00", \
+        "track length never showed"
+    ok("playing fills the card, tints it, and runs the progress bar")
+
+    rows = page.evaluate("document.querySelectorAll('#queueList .queue-item').length")
+    total = page.evaluate("playQueue.length")
+    assert rows == total - 1, f"queue lists {rows} of {total} — the current track is duplicated"
+    playing_title = page.evaluate("document.getElementById('nowPlayingTitle').textContent")
+    listed = page.evaluate(
+        "[...document.querySelectorAll('#queueList .queue-item-title')].map(e => e.textContent)")
+    assert playing_title not in listed, "the playing track also appears in the queue list"
+    ok("the queue lists only what's still to come, not the current track")
+
+    for el in ["turnDot", "turnCounter"]:
+        disp = page.evaluate(f"getComputedStyle(document.getElementById('{el}')).display")
+        assert disp == "none", f"#{el} is still showing ({disp}) while the playlist plays"
+    ok("the picking dot and counter bubble are gone once everyone has picked")
+
+    page.evaluate("clearQueue()")
+    page.wait_for_timeout(600)
+    assert "player-card-idle" in (card.get_attribute("class") or ""), \
+        "player card did not return to idle after Stop"
+    ok("Stop returns the card to its idle state")
+
     # ---- layout -------------------------------------------------------------
     section("Layout")
     for path in ["/", "/music/", "/podcasts/", "/videos/", "/music/albums/1", "/podcasts/shows/1"]:

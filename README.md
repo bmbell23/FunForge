@@ -97,15 +97,20 @@ The application automatically scans the music library on startup. You can also t
 
 ### For Kids
 
-1. **Home Screen**: Shows how many songs, albums, and artists are available
-2. **Browse Music**: Tap the big "Browse Music" button
-3. **Select Album**: Tap on any album cover to see the songs
-4. **Play Song**: Tap on any song to start playing
-5. **Player Controls**: Use the big ▶️ ⏸️ ⏭️ buttons to control playback
+1. **Home Screen**: three doors — **Songs**, **Stories** (podcasts and audiobooks)
+   and **Videos**. Nothing else.
+2. **Take turns**: each kid taps songs until they've used their picks, then it's
+   the other's turn. Once everyone has picked, the playlist starts and the
+   picking UI gets out of the way.
+3. **Browse**: tapping an album, artist or story opens an in-page sheet, so
+   whatever is playing keeps playing.
+4. **Player**: the queue drawer holds one player card — cover, title, progress
+   and the ▶️ ⏭️ controls, tinted with whoever's song is on.
 
 ### Design Features for Young Children
 
 - **Large Touch Targets**: All buttons are 80px+ for easy tapping
+- **Nothing to Read**: the home page is three coloured doors, not a dashboard
 - **Colorful Track Numbers**: Each track number has a different bright color for visual identification
 - **Simple Navigation**: Minimal clicks to get to music
 - **Auto-play Next**: Songs automatically play in sequence

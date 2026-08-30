@@ -28,7 +28,7 @@ async def podcasts_home(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request,
         "podcasts/index.html",
-        {"shows": shows, "title": "Podcasts"},
+        {"shows": shows, "title": "Stories"},
     )
 
 
