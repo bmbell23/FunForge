@@ -218,6 +218,9 @@ def run(page, errors):
         "player card was not tinted with the current picker's colour"
     assert page.evaluate("parseFloat(document.getElementById('pcBarFill').style.width) > 0"), \
         "progress bar never moved"
+    art_w = page.evaluate(
+        "Math.round(document.querySelector('.pc-art').getBoundingClientRect().width)")
+    assert art_w <= 100, f"player cover is {art_w}px wide — .pc-art rules are not in effect"
     assert page.evaluate("document.getElementById('pcTotal').textContent") != "0:00", \
         "track length never showed"
     ok("playing fills the card, tints it, and runs the progress bar")
@@ -241,6 +244,39 @@ def run(page, errors):
     assert "player-card-idle" in (card.get_attribute("class") or ""), \
         "player card did not return to idle after Stop"
     ok("Stop returns the card to its idle state")
+
+    # ---- asset freshness ----------------------------------------------------
+    # A stale stylesheet paired with fresh HTML drew the home tiles as bare links
+    # and the album cover at its natural 800px. Nothing on /static sent
+    # Cache-Control, so the WebView kept its copy indefinitely.
+    section("Asset freshness")
+    go("/")
+    links = page.evaluate("""() => ({
+        css: [...document.querySelectorAll('link[rel=stylesheet]')].map(l => l.getAttribute('href')),
+        js: [...document.querySelectorAll('script[src]')].map(s => s.getAttribute('src')),
+    })""")
+    for href in links["css"] + links["js"]:
+        assert "?v=" in href, f"{href} is not cache-busted — a stale copy can outlive a deploy"
+    ok("stylesheet and scripts are versioned by file mtime")
+
+    headers = {}
+    def grab(resp):
+        headers[resp.url] = resp.headers.get("cache-control", "")
+    page.on("response", grab)
+    page.goto(BASE + "/", wait_until="networkidle")
+    page.wait_for_timeout(300)
+    page.remove_listener("response", grab)
+    html_cc = next((v for k, v in headers.items() if k.rstrip("/").endswith("8006")), None)
+    css_cc = next((v for k, v in headers.items() if "style.css" in k), None)
+    assert css_cc and "immutable" in css_cc, f"versioned CSS cache-control is {css_cc!r}"
+    assert html_cc == "no-cache", f"HTML cache-control is {html_cc!r} — cached pages mean cached ?v= stamps"
+    ok("versioned assets cache forever, pages always revalidate")
+
+    # The real end-to-end guard: are the rules the markup depends on in effect?
+    tile_bg = page.evaluate(
+        "getComputedStyle(document.querySelector('.home-tile')).backgroundImage")
+    assert "gradient" in tile_bg, f"home tiles are unstyled (background-image: {tile_bg})"
+    ok("home tiles are actually styled by the served stylesheet")
 
     # ---- layout -------------------------------------------------------------
     section("Layout")

@@ -128,6 +128,32 @@ TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 # Mount static files
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+
+@app.middleware("http")
+async def static_cache_headers(request: Request, call_next):
+    """Tell caches what to do with /static — StaticFiles says nothing at all.
+
+    Android's WebView treats a response with no Cache-Control as free to keep for
+    as long as it likes, so it served a stale style.css alongside freshly
+    rendered HTML and drew the new markup with none of its rules.
+
+    Assets requested through templating.static_url() carry a ?v= stamp that
+    changes whenever the file does, so those are safe to keep forever. Anything
+    else (cover art referenced straight from the database) must revalidate, which
+    is a cheap 304 against the ETag StaticFiles already sends.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = (
+            "public, max-age=31536000, immutable" if "v" in request.query_params
+            else "public, max-age=0, must-revalidate"
+        )
+    elif response.headers.get("content-type", "").startswith("text/html"):
+        # The pages carry the ?v= stamps, so a cached page means cached stamps —
+        # the markup and the stylesheet must never be able to drift apart.
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 # Include routers
 app.include_router(music.router, tags=["music"])
 app.include_router(admin.router, tags=["admin"])

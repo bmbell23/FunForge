@@ -14,8 +14,30 @@ from fastapi.templating import Jinja2Templates
 from .config import settings
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+STATIC_DIR = Path(__file__).parent / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+def static_url(path: str) -> str:
+    """URL for a static asset, stamped with the file's modification time.
+
+    Without this the Android WebView keeps its cached copy of style.css for as
+    long as it likes — nothing on /static sends Cache-Control — and pairs it with
+    freshly rendered HTML. Ship markup that depends on new CSS and the phone
+    renders the new elements with no rules at all: unstyled links where the home
+    tiles should be, and an album cover at its natural 800px because .pc-art
+    never existed in the cached sheet.
+
+    The stamp changes with the file, so a changed asset is a different URL and
+    can never be answered from cache. Templates use it via {{ static_url(...) }}.
+    """
+    try:
+        stamp = int((STATIC_DIR / path).stat().st_mtime)
+    except OSError:
+        # Asset is missing; let the 404 be visible rather than papering over it.
+        return f"/static/{path}"
+    return f"/static/{path}?v={stamp}"
 
 
 def format_duration(seconds) -> str:
@@ -31,3 +53,4 @@ templates.env.filters["format_duration"] = format_duration
 
 # base.html hands this to the parent-lock keypad.
 templates.env.globals["parent_pin"] = settings.parent_pin
+templates.env.globals["static_url"] = static_url
