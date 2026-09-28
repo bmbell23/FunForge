@@ -11,12 +11,14 @@ come from, which is the whole reason `/games/api/pictures` takes a `source`.
 
 import json
 import random
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from PIL import Image
 
 from ..database import get_db
 from ..models import Album
@@ -33,6 +35,15 @@ MATCH_LEVELS = [2, 3, 4, 6]
 # talks to Immich itself — it reads this file and the cached thumbnails beside it,
 # so the family games keep working when Immich is down.
 FAMILY_MANIFEST = Path("/app/data/family_photos.json")
+
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+# How many of a cover's 256 thumbnail bits may differ before it counts as a
+# different picture. The five Bluey theme-song singles (English, German, Spanish,
+# Italian, French) are separate files that differ only in a caption a toddler
+# can't read, and they land within 9 of each other; the closest genuinely
+# different pair in the library sits at 22.
+LOOKALIKE_BITS = 12
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +77,35 @@ def save_family_approvals(approved_ids):
     except OSError:
         return False
     return True
+
+
+# ---------------------------------------------------------------------------
+# look-alike covers
+# ---------------------------------------------------------------------------
+
+@lru_cache(maxsize=1024)
+def _cover_hash(path: str, mtime: float):
+    """A 16x16 average hash of one cover: 256 bits, one per cell, set where the
+    cell is brighter than the picture's mean. `mtime` is only there to key the
+    cache, so a rescan that rewrites the art in place is hashed afresh."""
+    with Image.open(path) as im:
+        cells = list(im.convert("L").resize((16, 16)).getdata())
+    mean = sum(cells) / len(cells)
+    return sum(1 << i for i, v in enumerate(cells) if v > mean)
+
+
+def cover_hash(url_path: str):
+    """Hash for a `/static/...` cover, or None if it can't be read. An unreadable
+    cover is not a reason to drop an album from the board."""
+    try:
+        disk = STATIC_DIR / url_path.removeprefix("/static/")
+        return _cover_hash(str(disk), disk.stat().st_mtime)
+    except (OSError, ValueError):
+        return None
+
+
+def looks_like_any(h, taken) -> bool:
+    return h is not None and any(bin(h ^ t).count("1") <= LOOKALIKE_BITS for t in taken)
 
 
 # ---------------------------------------------------------------------------
@@ -137,9 +177,11 @@ async def pictures(source: str = "covers", count: int = 6,
                    db: Session = Depends(get_db)):
     """`count` random pictures for a game board.
 
-    Album covers are deduplicated by image path, not by album id: two albums by
-    the same artist can share one cover file, and a "pair" of two different
-    albums wearing the same picture is unmatchable-looking nonsense to a kid.
+    Album covers are deduplicated by what they look like, not by album id or
+    even by file: two albums can share one cover file, and separate files can
+    carry the same picture (every language's Bluey theme single). A "pair" of two
+    different albums wearing the same picture is unmatchable nonsense to a kid:
+    the board ends with cards that look like they match and won't.
     """
     count = max(1, min(count, 24))
 
@@ -159,11 +201,16 @@ async def pictures(source: str = "covers", count: int = 6,
         .all()
     )
 
-    seen, pics = set(), []
+    seen, hashes, pics = set(), [], []
     for album_id, title, path in rows:
         if path in seen:
             continue
         seen.add(path)
+        h = cover_hash(path)
+        if looks_like_any(h, hashes):
+            continue
+        if h is not None:
+            hashes.append(h)
         pics.append({"id": album_id, "title": title, "cover": path})
         if len(pics) == count:
             break
