@@ -279,7 +279,7 @@ def run(page, errors):
     page.goto(BASE + "/", wait_until="networkidle")
     page.wait_for_timeout(300)
     page.remove_listener("response", grab)
-    html_cc = next((v for k, v in headers.items() if k.rstrip("/").endswith("8006")), None)
+    html_cc = next((v for k, v in headers.items() if k.rstrip("/") == BASE.rstrip("/")), None)
     css_cc = next((v for k, v in headers.items() if "style.css" in k), None)
     assert css_cc and "immutable" in css_cc, f"versioned CSS cache-control is {css_cc!r}"
     assert html_cc == "no-cache", f"HTML cache-control is {html_cc!r} — cached pages mean cached ?v= stamps"
