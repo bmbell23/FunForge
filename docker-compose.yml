@@ -4,6 +4,10 @@ services:
       context: .
       target: development
     container_name: funforge
+    # Run tini as PID 1 so it reaps exited children. Without it uvicorn is PID 1,
+    # and the python3 processes the healthcheck spawns are never waited on --
+    # they accumulated 562 zombies between Jul 10 and Sep 9 2026.
+    init: true
     ports:
       - "8006:8006"
     volumes:
