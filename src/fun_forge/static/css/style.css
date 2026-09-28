@@ -1025,18 +1025,20 @@ body:has(.music-main) .header { display: none; }
     .track-number { font-size: 36px; width: 60px; }
 }
 
-/* ============ DIRECT PLAY MODE ============ */
+/* ============ PARENT-MODE CARD CONTROLS ============ */
 
-/* Album cover overlay - play & queue buttons */
+/* Play button, tucked into the bottom-right corner of the cover.
+   It used to be a full-width bar centred over the artwork, which put it right
+   under a thumb aiming at the middle of the card — so opening an album to see
+   its tracks played the whole thing instead. Corners for the buttons, the whole
+   middle of the card for "show me what's in here". */
 .album-dp-overlay {
     position: absolute;
-    bottom: 0; left: 0; right: 0;
-    background: linear-gradient(transparent, rgba(0,0,0,0.75));
+    bottom: 8px; right: 8px;
     display: flex;
-    gap: 12px;
+    gap: 10px;
+    align-items: center;
     justify-content: center;
-    align-items: flex-end;
-    padding: 30px 15px 14px;
 }
 .album-dp-play-btn {
     background: #4CAF50; color: white; border: none;
@@ -1046,19 +1048,22 @@ body:has(.music-main) .header { display: none; }
     display: flex; align-items: center; justify-content: center;
     transition: transform 0.15s;
 }
-.album-dp-queue-btn {
+/* "Add to queue" sits in the top-right corner of the cover, the same place the
+   ➕ sits on a song tile — one spot to learn, whichever grid you're looking at. */
+.album-queue-corner {
+    position: absolute; top: 8px; right: 8px; z-index: 5;
     background: white; color: #667eea; border: none;
     border-radius: 50%; width: 48px; height: 48px;
-    font-size: 22px; font-weight: bold; cursor: pointer;
+    font-size: 26px; font-weight: bold; line-height: 1; cursor: pointer;
     box-shadow: 0 3px 12px rgba(0,0,0,0.25);
-    display: flex; align-items: center; justify-content: center;
+    align-items: center; justify-content: center;
     transition: transform 0.15s;
 }
-.album-dp-play-btn:active, .album-dp-queue-btn:active { transform: scale(0.9); }
+.album-dp-play-btn:active, .album-queue-corner:active { transform: scale(0.9); }
 
-/* Direct play mode toggle button - active state */
-.ctrl-btn.direct-play-active {
-    background: #4CAF50 !important;
+/* Edit mode toggle button - active state */
+.ctrl-btn.edit-mode-active {
+    background: #F9A825 !important;
     opacity: 1 !important;
 }
 

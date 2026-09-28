@@ -88,6 +88,18 @@ Pages must not keep their own parent-mode flag — subscribe with `KidLock.onCha
 and gate actions with `KidLock.require(fn)`. PIN comes from `PARENT_PIN` (default
 `1234`), injected by `base.html`; it is a toddler lock, not a security boundary.
 
+### Parent mode is not edit mode
+
+Unlocking makes you a grown-up with a player, not a librarian. In plain parent
+mode every card offers exactly two things: tap it to play, or tap the ➕ in its
+top-right corner to queue it. Checkboxes, ⚙️ buttons and the bulk edit/delete
+bars live behind a second, deliberate tap — the ✏️ button (`#editModeToggleBtn`,
+`editModeActive`) that appears next to the lock in parent mode. Edit mode is
+never restored from storage: it starts off on every page load, and locking drops
+both modes at once. Anything destructive added later belongs behind that toggle.
+Play/queue buttons sit in the *corners* of album art, never centred — a button
+under the middle of a card turns "show me what's in here" into "play the lot".
+
 ### Screen names
 
 The kid-facing names are **Songs** (`/music/`), **Stories** (`/podcasts/` —

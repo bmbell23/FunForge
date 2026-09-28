@@ -55,6 +55,9 @@
         </div>
 
         <div class="controls-right">
+            <!-- Editing is a mode *inside* parent mode (see Songs) — unlocking
+                 gets you play + queue on every show, nothing destructive. -->
+            <button class="ctrl-btn" id="editModeToggleBtn" onclick="toggleEditMode()" style="display:none;" title="Edit Mode — tap to turn on">✏️</button>
             <!-- The lock button is injected here by funforge-lock.js — the same
                  control, and the same unlock, as every other page. -->
         </div>
@@ -81,6 +84,16 @@
                     {% else %}
                     <div class="album-cover-placeholder">🎙️</div>
                     {% endif %}
+                    <!-- Parent mode only: play the show, or queue it from the
+                         corner ➕. Tapping the card still opens the episode list. -->
+                    <div class="album-dp-overlay" style="display:none;">
+                        <button class="album-dp-play-btn"
+                                onclick="event.preventDefault(); event.stopPropagation(); playShowNow({{ show.id }})"
+                                title="Play Show Now">▶</button>
+                    </div>
+                    <button class="album-queue-corner" style="display:none;"
+                            onclick="event.preventDefault(); event.stopPropagation(); queueShow({{ show.id }})"
+                            title="Add Show to Queue">+</button>
                 </div>
                 <div class="album-info">
                     <div class="album-title">{{ show.title }}</div>
@@ -148,6 +161,8 @@ let picks = { 0: [], 1: [] };
 let playQueue = [];
 let currentQueueIndex = -1;
 let parentModeActive = false;
+// Editing is opt-in from parent mode, never automatic — see toggleEditMode.
+let editModeActive = false;
 let pickingLocked = false;
 let pendingUserGestureResume = false;
 
@@ -660,17 +675,82 @@ function updateTurnIndicator() {
 function enterParentMode() {
     parentModeActive = true;
     document.getElementById('searchBar').style.display = 'flex';
+
+    // Offer editing, don't turn it on — same rule as Songs.
+    editModeActive = false;
+    const editBtn = document.getElementById('editModeToggleBtn');
+    editBtn.style.display = 'flex';
+    editBtn.classList.remove('edit-mode-active');
+    editBtn.title = 'Edit Mode — tap to turn on';
+
+    applyCardControls();
     updateTurnIndicator();
     updateShowGridVisibility();
 }
 
 function exitParentMode() {
     parentModeActive = false;
+    editModeActive = false;
+    const editBtn = document.getElementById('editModeToggleBtn');
+    editBtn.style.display = 'none';
+    editBtn.classList.remove('edit-mode-active');
+
+    applyCardControls();
     document.getElementById('searchBar').style.display = 'none';
     document.getElementById('searchInput').value = '';
     filterShows('');
     updateTurnIndicator();
     updateShowGridVisibility();
+}
+
+// ============ EDIT MODE (parent mode only) ============
+// Nothing on this page is destructive yet — editing just reveals the ⚙️ that
+// opens a show's episode-emoji page — but it stays behind the same second tap as
+// Songs so the two screens don't disagree about what "parent mode" means.
+function toggleEditMode(on) {
+    editModeActive = (on === undefined) ? !editModeActive : !!on;
+    const btn = document.getElementById('editModeToggleBtn');
+    btn.classList.toggle('edit-mode-active', editModeActive);
+    btn.title = editModeActive ? 'Edit Mode on — tap to turn off' : 'Edit Mode — tap to turn on';
+    applyCardControls();
+    if (sheetState) renderSheetActions();
+}
+
+/** Play/queue buttons belong to plain parent mode; edit mode hides them. */
+function applyCardControls() {
+    const playing = parentModeActive && !editModeActive;
+    document.querySelectorAll('.album-dp-overlay').forEach(el => el.style.display = playing ? 'flex' : 'none');
+    document.querySelectorAll('.album-queue-corner').forEach(el => el.style.display = playing ? 'flex' : 'none');
+}
+
+// ============ WHOLE-SHOW ACTIONS (card buttons) ============
+function episodesForShow(showId) {
+    return allEpisodes.filter(e => e.show_id === showId);
+}
+
+function playShowNow(showId) {
+    const eps = episodesForShow(showId);
+    if (eps.length === 0) return;
+    audioPlayer.pause();
+    audioPlayer.src = '';
+    picks = { 0: [], 1: [] };
+    playQueue = eps.map(ep => ({ episode: ep, kidIndex: -1 }));
+    currentQueueIndex = 0;
+    playCurrentQueueItem();
+    renderQueue();
+    saveState();
+}
+
+function queueShow(showId) {
+    const eps = episodesForShow(showId);
+    if (eps.length === 0) return;
+    eps.forEach(ep => playQueue.push({ episode: ep, kidIndex: -1 }));
+    if (currentQueueIndex === -1) {
+        currentQueueIndex = 0;
+        playCurrentQueueItem();
+    }
+    renderQueue();
+    saveState();
 }
 
 // The first correct PIN unlocks globally and stays unlocked until the parent
@@ -713,18 +793,25 @@ function openShowSheet(showId, event) {
     document.getElementById('sheetSubtitle').textContent =
         `${eps.length} episode${eps.length === 1 ? '' : 's'}`;
 
-    document.getElementById('sheetActions').innerHTML = parentModeActive
-        ? '<button class="sheet-btn sheet-btn-play" onclick="sheetPlayAll()">▶️ Play All</button>' +
-          '<button class="sheet-btn" onclick="sheetQueueAll()">➕ Queue All</button>' +
-          `<button class="sheet-btn" onclick="window.location.href='/podcasts/shows/${showId}'" title="Edit episode emojis">⚙️</button>`
-        : '';
-
+    renderSheetActions();
     renderSheetEpisodes();
 
     const overlay = document.getElementById('mediaSheet');
     overlay.style.display = 'flex';
     requestAnimationFrame(() => overlay.classList.add('sheet-open'));
     return false;  // cancel the <a> navigation
+}
+
+/** Play All / Queue All for grown-ups; the ⚙️ only once they've asked to edit. */
+function renderSheetActions() {
+    const el = document.getElementById('sheetActions');
+    if (!parentModeActive || !sheetState) { el.innerHTML = ''; return; }
+    el.innerHTML =
+        '<button class="sheet-btn sheet-btn-play" onclick="sheetPlayAll()">▶️ Play All</button>' +
+        '<button class="sheet-btn" onclick="sheetQueueAll()">➕ Queue All</button>' +
+        (editModeActive
+            ? `<button class="sheet-btn" onclick="window.location.href='/podcasts/shows/${sheetState.showId}'" title="Edit episode emojis">⚙️</button>`
+            : '');
 }
 
 function renderSheetEpisodes() {

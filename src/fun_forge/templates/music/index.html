@@ -71,7 +71,10 @@
         <div class="controls-right">
             <button class="ctrl-btn ctrl-btn-guest" id="addGuestBtn" onclick="showGuestModal()" title="Add Guest">👤 Add Guest</button>
             <button class="ctrl-btn" id="viewToggleBtn" onclick="toggleView()" title="Albums/Songs">💿</button>
-            <button class="ctrl-btn" id="directPlayToggleBtn" onclick="toggleDirectPlay()" style="display:none;" title="Queue Mode — tap to switch to Direct Play">📋</button>
+            <!-- Editing is a mode *inside* parent mode, not the same thing as it.
+                 Unlocking gets you play + queue on every card; the checkboxes,
+                 gear buttons and bulk bars only appear once you ask for them. -->
+            <button class="ctrl-btn" id="editModeToggleBtn" onclick="toggleEditMode()" style="display:none;" title="Edit Mode — tap to turn on">✏️</button>
             <!-- The lock button is injected here by funforge-lock.js — it's the
                  same control on every page, so unlocking here stays unlocked
                  in Podcasts, on an album page, and after an app restart. -->
@@ -94,6 +97,8 @@
     <div class="album-grid" id="albumGrid" style="display:none;">
         {% for album in albums %}
         <div class="album-card-wrapper" data-album-id="{{ album.id }}">
+            <!-- Edit-mode only (see toggleEditMode) — parent mode on its own just
+                 gets you the play and queue buttons on the cover. -->
             <div class="parent-controls" style="display: none;">
                 <input type="checkbox" class="album-checkbox" value="{{ album.id }}">
                 <button class="edit-button" onclick="editAlbum({{ album.id }}); event.preventDefault();">⚙️</button>
@@ -113,10 +118,10 @@
                         <button class="album-dp-play-btn"
                                 onclick="event.preventDefault(); event.stopPropagation(); playAlbumNow({{ album.id }})"
                                 title="Play Album Now">▶</button>
-                        <button class="album-dp-queue-btn"
-                                onclick="event.preventDefault(); event.stopPropagation(); addAlbumToQueue({{ album.id }})"
-                                title="Add Album to Queue">+</button>
                     </div>
+                    <button class="album-queue-corner" style="display:none;"
+                            onclick="event.preventDefault(); event.stopPropagation(); addAlbumToQueue({{ album.id }})"
+                            title="Add Album to Queue">+</button>
                 </div>
                 <div class="album-info">
                     <div class="album-title">{{ album.title }}</div>
@@ -144,10 +149,10 @@
                         <button class="album-dp-play-btn"
                                 onclick="event.preventDefault(); event.stopPropagation(); playArtistNow({{ artist.id }})"
                                 title="Play Artist Now">▶</button>
-                        <button class="album-dp-queue-btn"
-                                onclick="event.preventDefault(); event.stopPropagation(); addArtistToQueue({{ artist.id }})"
-                                title="Add Artist to Queue">+</button>
                     </div>
+                    <button class="album-queue-corner" style="display:none;"
+                            onclick="event.preventDefault(); event.stopPropagation(); addArtistToQueue({{ artist.id }})"
+                            title="Add Artist to Queue">+</button>
                 </div>
                 <div class="artist-info">
                     <div class="artist-name">{{ artist.name }}</div>
@@ -220,7 +225,10 @@ let playQueue = []; // { track, kidIndex } — kidIndex -1 = parent
 let currentQueueIndex = -1;
 let allTracks = [];
 let parentModeActive = false;
-let parentDirectPlay = false; // true = click plays immediately; false = click adds to queue
+// Editing (checkboxes, gear buttons, bulk delete) is a mode you opt into from
+// parent mode, not something unlocking hands you. Plain parent mode is a grown-up
+// player: tap a card to play it, tap its ➕ to queue it.
+let editModeActive = false;
 let currentView = 'songs';
 const audioPlayer = document.getElementById('audioPlayer');
 
@@ -516,11 +524,16 @@ function renderSongGrid(filter = '') {
         return;
     }
 
+    // Three shapes of tile: a kid's pick, a grown-up's play/queue card, and an
+    // editing card. Only the last one gets checkboxes and gears.
+    const editing = parentModeActive && editModeActive;
+    const parentPlaying = parentModeActive && !editModeActive;
+
     grid.innerHTML = filtered.map(track => `
-        <div class="song-tile${parentModeActive ? ' parent-mode-tile' : ''}"
-             onclick="${parentModeActive && parentDirectPlay ? `playNow(${track.id})` : `pickSong(${track.id})`}"
+        <div class="song-tile${parentModeActive ? ' parent-mode-tile' : ''}${editing ? ' edit-mode-tile' : ''}"
+             onclick="${editing ? 'toggleSongSelect(this)' : parentPlaying ? `playNow(${track.id})` : `pickSong(${track.id})`}"
              data-track-id="${track.id}">
-            ${parentModeActive ? `
+            ${editing ? `
                 <label class="song-checkbox-label" onclick="event.stopPropagation()">
                     <input type="checkbox" class="song-checkbox" value="${track.id}" onchange="updateSelectedSongsCount()">
                 </label>
@@ -536,11 +549,10 @@ function renderSongGrid(filter = '') {
             </div>
             ${parentModeActive ? `
                 <div class="song-tile-parent-controls">
-                    ${parentDirectPlay
-                        ? `<button class="song-add-queue" onclick="event.stopPropagation(); addSongToQueue(${track.id})" title="Add to queue">➕</button>`
-                        : `<button class="song-play-now" onclick="event.stopPropagation(); playNow(${track.id})" title="Play now">▶️</button>`
+                    ${editing
+                        ? `<button class="song-edit-btn" onclick="event.stopPropagation(); window.location.href='/music/albums/${track.album_id}/edit'" title="Edit metadata">⚙️</button>`
+                        : `<button class="song-add-queue" onclick="event.stopPropagation(); addSongToQueue(${track.id})" title="Add to queue">➕</button>`
                     }
-                    <button class="song-edit-btn" onclick="event.stopPropagation(); window.location.href='/music/albums/${track.album_id}/edit'" title="Edit metadata">⚙️</button>
                 </div>
             ` : ''}
         </div>
@@ -754,23 +766,47 @@ function playFromHere(index) {
 }
 
 // ============ DIRECT PLAY (parent mode) ============
-function toggleDirectPlay() {
-    parentDirectPlay = !parentDirectPlay;
-    const btn = document.getElementById('directPlayToggleBtn');
-    if (parentDirectPlay) {
-        btn.textContent = '▶️';
-        btn.title = 'Direct Play — tap to switch to Queue Mode';
-        btn.classList.add('direct-play-active');
-        sessionStorage.setItem('funforge_direct_play', 'true');
-        document.querySelectorAll('.album-dp-overlay').forEach(el => el.style.display = 'flex');
-    } else {
-        btn.textContent = '📋';
-        btn.title = 'Queue Mode — tap to switch to Direct Play';
-        btn.classList.remove('direct-play-active');
-        sessionStorage.removeItem('funforge_direct_play');
-        document.querySelectorAll('.album-dp-overlay').forEach(el => el.style.display = 'none');
-    }
+// ============ EDIT MODE (parent mode only) ============
+// Unlocking gives a grown-up the player. Editing — checkboxes, gear buttons,
+// bulk edit/delete — is a second, deliberate step, so a parent who just wants to
+// put a record on can't fat-finger a delete.
+function toggleEditMode(on) {
+    editModeActive = (on === undefined) ? !editModeActive : !!on;
+
+    const btn = document.getElementById('editModeToggleBtn');
+    btn.classList.toggle('edit-mode-active', editModeActive);
+    btn.title = editModeActive ? 'Edit Mode on — tap to turn off' : 'Edit Mode — tap to turn on';
+
+    applyCardControls();
     renderSongGrid();
+
+    if (editModeActive) showBulkActions();
+    else {
+        hideBulkActions();
+        document.querySelectorAll('.album-checkbox').forEach(cb => cb.checked = false);
+    }
+}
+
+/**
+ * Show the right per-card controls for the current mode on the album and artist
+ * grids (the song grid is re-rendered instead). Kid mode: nothing. Parent mode:
+ * play + queue. Edit mode: checkbox + gear, and no play buttons in the way.
+ */
+function applyCardControls() {
+    const playing = parentModeActive && !editModeActive;
+    document.querySelectorAll('.album-dp-overlay').forEach(el => el.style.display = playing ? 'flex' : 'none');
+    document.querySelectorAll('.album-queue-corner').forEach(el => el.style.display = playing ? 'flex' : 'none');
+    document.querySelectorAll('.parent-controls').forEach(el => {
+        el.style.display = (parentModeActive && editModeActive) ? 'flex' : 'none';
+    });
+}
+
+/** Edit mode: tapping anywhere on a tile selects it — the checkbox is tiny. */
+function toggleSongSelect(tile) {
+    const cb = tile.querySelector('.song-checkbox');
+    if (!cb) return;
+    cb.checked = !cb.checked;
+    updateSelectedSongsCount();
 }
 
 function playAlbumNow(albumId) {
@@ -1288,7 +1324,7 @@ function toggleView() {
         artistGrid.style.display = 'none';
         btn.textContent = '🎤';
         btn.title = 'Show Artists';
-        if (parentModeActive) { hideSongBulkBar(); showAlbumBulkBar(); }
+        if (editModeActive) { hideSongBulkBar(); showAlbumBulkBar(); }
     } else if (currentView === 'albums') {
         currentView = 'artists';
         songGrid.style.display = 'none';
@@ -1296,7 +1332,7 @@ function toggleView() {
         artistGrid.style.display = 'grid';
         btn.textContent = '🎵';
         btn.title = 'Show All Songs';
-        if (parentModeActive) { hideAlbumBulkBar(); hideSongBulkBar(); }
+        if (editModeActive) { hideAlbumBulkBar(); hideSongBulkBar(); }
     } else {
         currentView = 'songs';
         songGrid.style.display = 'grid';
@@ -1304,7 +1340,7 @@ function toggleView() {
         artistGrid.style.display = 'none';
         btn.textContent = '💿';
         btn.title = 'Show Albums';
-        if (parentModeActive) { hideAlbumBulkBar(); showSongBulkBar(); }
+        if (editModeActive) { hideAlbumBulkBar(); showSongBulkBar(); }
     }
 }
 
@@ -1331,45 +1367,35 @@ function enterParentMode() {
     // Show search bar
     document.getElementById('searchBar').style.display = 'flex';
 
-    // Show parent controls on albums
-    document.querySelectorAll('.parent-controls').forEach(el => el.style.display = 'flex');
+    // Offer editing, but don't turn it on: unlocking means "a grown-up is here",
+    // not "start rearranging the library".
+    editModeActive = false;
+    const editBtn = document.getElementById('editModeToggleBtn');
+    editBtn.style.display = 'flex';
+    editBtn.classList.remove('edit-mode-active');
+    editBtn.title = 'Edit Mode — tap to turn on';
 
-    // Show the direct play toggle button
-    const dpBtn = document.getElementById('directPlayToggleBtn');
-    dpBtn.style.display = 'flex';
-
-    // Restore direct play mode if it was active before a reload
-    if (sessionStorage.getItem('funforge_direct_play') === 'true') {
-        parentDirectPlay = true;
-        dpBtn.textContent = '▶️';
-        dpBtn.title = 'Direct Play — tap to switch to Queue Mode';
-        dpBtn.classList.add('direct-play-active');
-        document.querySelectorAll('.album-dp-overlay').forEach(el => el.style.display = 'flex');
-    }
-
-    // Re-render to show play-now buttons/checkboxes and clickable queue
+    // Play + queue buttons on every card; no checkboxes, no gears, no bulk bar.
+    applyCardControls();
     renderSongGrid();
     renderQueue();
 
-    // Show the correct bulk action bar for current view
-    showBulkActions();
+    hideBulkActions();
     updateGuestControls();  // hides the Add Guest button and guest chips in parent mode
 }
 
 function exitParentMode() {
     parentModeActive = false;
 
-    // Reset and hide direct play toggle
-    parentDirectPlay = false;
-    sessionStorage.removeItem('funforge_direct_play');
-    const dpBtn = document.getElementById('directPlayToggleBtn');
-    dpBtn.style.display = 'none';
-    dpBtn.textContent = '📋';
-    dpBtn.classList.remove('direct-play-active');
-    document.querySelectorAll('.album-dp-overlay').forEach(el => el.style.display = 'none');
+    // Reset and hide the edit toggle — locking drops both modes at once.
+    editModeActive = false;
+    const editBtn = document.getElementById('editModeToggleBtn');
+    editBtn.style.display = 'none';
+    editBtn.classList.remove('edit-mode-active');
+
+    applyCardControls();
 
     document.getElementById('searchBar').style.display = 'none';
-    document.querySelectorAll('.parent-controls').forEach(el => el.style.display = 'none');
     clearSearch();
     updateTurnIndicator();
     renderSongGrid();

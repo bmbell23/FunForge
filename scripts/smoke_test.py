@@ -112,7 +112,9 @@ def run(page, errors):
     assert ["screen", True] in calls, "display was not held awake while playing"
     ok("playing a song starts the media session with absolute cover art")
 
-    page.locator(".song-tile").nth(1).click()
+    # Tapping a tile in parent mode *plays* it, so line up the next song with the
+    # tile's ➕ instead — otherwise there's nothing for "next" to advance to.
+    page.locator(".song-tile").nth(1).locator(".song-add-queue").click()
     page.wait_for_timeout(600)
     before = page.evaluate("currentQueueIndex")
     page.evaluate("window.__bridgeCalls = []")
@@ -183,6 +185,70 @@ def run(page, errors):
     assert state["q"] == 1 and not state["paused"], f"picking an episode did not play it: {state}"
     assert state["locked"], "turn was not locked after a pick"
     ok("kid picks a podcast episode from the sheet and it plays immediately")
+
+    # ---- parent mode vs edit mode -------------------------------------------
+    # Unlocking makes you a grown-up with a player, not a librarian: play and
+    # queue on every card, and nothing that can delete anything until you ask.
+    section("Parent mode is not edit mode")
+    page.evaluate("localStorage.setItem('funforge_unlocked','true')")
+    go("/music/")
+    page.wait_for_timeout(400)
+    assert page.evaluate("parentModeActive && !editModeActive"), "unlocking turned edit mode on"
+    tile = page.locator(".song-tile").first
+    assert tile.locator(".song-add-queue").count() == 1, "no ➕ on a parent-mode song tile"
+    assert tile.locator(".song-checkbox").count() == 0, "checkboxes on a plain parent-mode tile"
+    assert tile.locator(".song-edit-btn").count() == 0, "gear button on a plain parent-mode tile"
+    assert page.locator("#songBulkActionBar").count() == 0, "bulk delete bar without asking for it"
+    ok("parent mode gives each song tile play + ➕ and nothing else")
+
+    page.click("#viewToggleBtn")            # songs -> albums
+    page.wait_for_timeout(300)
+    assert page.locator(".album-queue-corner").first.is_visible(), "album cards have no ➕"
+    assert page.locator(".album-dp-play-btn").first.is_visible(), "album cards have no play button"
+    assert not page.locator(".parent-controls").first.is_visible(), \
+        "album checkbox/gear showing without edit mode"
+    ok("album cards get play + ➕, not checkboxes")
+
+    page.click("#editModeToggleBtn")
+    page.wait_for_timeout(300)
+    assert page.locator(".parent-controls").first.is_visible(), "edit mode did not reveal album controls"
+    assert not page.locator(".album-queue-corner").first.is_visible(), "play/queue clutter left in edit mode"
+    assert page.locator("#bulkActionBar").is_visible(), "edit mode did not show the album bulk bar"
+    page.click("#viewToggleBtn"); page.click("#viewToggleBtn")   # back to songs
+    page.wait_for_timeout(300)
+    tile = page.locator(".song-tile").first
+    assert tile.locator(".song-checkbox").count() == 1, "edit mode has no song checkbox"
+    tile.click()
+    page.wait_for_timeout(200)
+    assert page.evaluate("document.querySelectorAll('.song-checkbox:checked').length") == 1, \
+        "tapping a tile in edit mode did not select it"
+    assert page.evaluate("audioPlayer.paused"), "tapping a tile in edit mode started playback"
+    ok("edit mode is a second, deliberate tap — then checkboxes, gears and bulk actions appear")
+
+    page.click("#editModeToggleBtn")
+    page.wait_for_timeout(300)
+    assert page.locator(".song-tile").first.locator(".song-checkbox").count() == 0, \
+        "leaving edit mode left the checkboxes behind"
+    assert page.evaluate("parentModeActive"), "leaving edit mode also dropped parent mode"
+    ok("turning edit mode off keeps you in parent mode")
+
+    go("/podcasts/")
+    page.wait_for_timeout(800)
+    assert page.evaluate("parentModeActive && !editModeActive"), "Stories opened straight into edit mode"
+    assert page.locator(".album-queue-corner").first.is_visible(), "show cards have no ➕"
+    page.locator(".album-card").first.click()
+    page.wait_for_timeout(500)
+    actions = page.locator(".sheet-actions").inner_text()
+    assert "⚙️" not in actions, "show sheet offered the edit gear outside edit mode"
+    assert "Play All" in actions, "parent lost Play All"
+    page.evaluate("closeMediaSheet()")
+    page.click("#editModeToggleBtn")
+    page.wait_for_timeout(300)
+    page.locator(".album-card").first.click()
+    page.wait_for_timeout(500)
+    assert "⚙️" in page.locator(".sheet-actions").inner_text(), "edit mode did not reveal the gear"
+    page.evaluate("closeMediaSheet(); clearQueue()")
+    ok("Stories follows the same rule: play + ➕ by default, gear only in edit mode")
 
     # ---- home page ----------------------------------------------------------
     section("Home page")
