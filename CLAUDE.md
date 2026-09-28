@@ -112,6 +112,73 @@ the order is fixed. A kid who can't read navigates by position, so Songs must st
 top-left on every screen it ever renders on. Adding a fifth screen means rethinking
 the shape, not appending a tile.
 
+### Games
+
+Games and the media player are **separate worlds**. A game brings its own audio,
+and arriving on a game page has already destroyed the queue's `<audio>` — so a
+game owns audio outright and never ducks, mixes or shares. This is the one place
+in the app where a page load stopping the music is the *point* rather than the
+bug the sheets exist to avoid.
+
+One route per game (`routes/games.py`), the same shape `videos.py` uses. There is
+deliberately no scanned `games/` directory or manifest: that plugin layer gets
+built when the duplication between two real games makes its shape obvious, not
+before.
+
+Every game extends `games/_shell.html`, which supplies three things so no game
+has to remember them:
+
+- **A locked exit.** Starting a game is a commitment — you cannot back out and
+  pick another. Without that, a toddler spends the session flipping between games
+  instead of playing one. Leaving costs the `KidLock` PIN. If the app was locked
+  when the game started, the shell **re-locks it on the way out**: `KidLock`
+  unlocks globally on success, so otherwise one PIN entry would leave every later
+  game freely exitable.
+- **A back button that stays shut.** `MainActivity.onKeyDown` runs
+  `webView.goBack()` whenever history allows and cannot see anything the page
+  believes about being locked, so the shell pushes a sentinel history entry and
+  re-pushes it on every `popstate`. Keeping *some* history entry matters in both
+  directions: with none, `canGoBack()` is false and Back closes the whole app.
+  A JS-bridge flag checked in Java would be sturdier, but it needs an APK rebuild;
+  the history trap ships with web changes, which are live immediately.
+- **Pause on hide**, via `FunForgeGame.onPause` / `onResume`.
+
+No scores, no timers, no fail states. A game that can be lost produces a tantrum,
+not a retry. Clearing a board deals a slightly bigger one and the last size
+repeats forever. There is **no app-level two-kid turn taking** the way Songs has —
+if a game wants turns or co-op, it builds them itself.
+
+Game boards size their cells in JS, not CSS. Album art is square, and `1fr` grid
+tracks on a phone produced 200x450 cells whose `object-fit: cover` sliced the
+middle out of every cover — the exact part a kid matches on.
+
+### Family photos (Immich)
+
+Match the Family is the same game as Match the Covers with a different picture
+source — `/games/api/pictures?source=family`. Adding a third source should mean
+another route, not another copy of `games/match.html`.
+
+**The app never talks to Immich.** `scripts/sync_immich_faces.py` runs on the
+*host* and caches thumbnails into `static/faces/` plus a manifest at
+`data/family_photos.json`; FunForge only ever reads its own disk. Two reasons:
+
+- The container is on its own bridge and genuinely cannot reach Immich — Docker's
+  isolation rules drop cross-bridge traffic, and the host's published 2283 is not
+  bound in a way a container can use. Verified, not assumed.
+- The games keep working while Immich is down, upgrading, or has had its port
+  mangled by a stale DNAT rule (which it had, on 21 Sep 2026).
+
+The script is standard-library only so the image needs no HTTP client.
+
+**Nothing synced is approved.** Face recognition returns *every* photo of a child,
+bath time included, so `approved` defaults to false and a grown-up ticks photos
+off at `/games/photos/` before they can reach a board. The picker hides the family
+tile until at least two photos are approved — a tile that opens onto an empty
+board is worse than no tile, because tapping it locks a kid into nothing.
+
+**This repo is public.** `static/faces/` is gitignored and must stay that way.
+Pictures of the kids do not go to GitHub.
+
 ### Keeping playback alive across the UI
 
 Browsing must not navigate away from a page that is playing — a page load destroys

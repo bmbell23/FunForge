@@ -1,0 +1,253 @@
+{% extends "games/_shell.html" %}
+
+{% block game %}
+{# Match the pairs. One game, two content sources: album covers out of the kid's
+   own library, or approved photos of the family. The mechanic is identical, so
+   `source` is the only thing that differs — adding a third picture source means
+   adding a route, not another copy of this file. No timer, no score, no way to
+   lose: clearing the board just deals a slightly bigger one, and the last size
+   repeats forever. #}
+<div class="cm-stage">
+    <div id="cmBoard" class="cm-board" aria-label="Match the covers"></div>
+</div>
+<div id="cmCheer" class="cm-cheer" aria-hidden="true">🎉</div>
+{% endblock %}
+
+{% block game_js %}
+<script>
+(function () {
+    'use strict';
+
+    var LEVELS = {{ levels | tojson }};
+    var SOURCE = {{ source | tojson }};
+    var board = document.getElementById('cmBoard');
+    var cheer = document.getElementById('cmCheer');
+
+    var level = 0;
+    var first = null;
+    var busy = false;      // true while a wrong pair is flipping back
+    var remaining = 0;
+    var timers = [];
+
+    function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+    function clearTimers() {
+        for (var i = 0; i < timers.length; i++) clearTimeout(timers[i]);
+        timers = [];
+    }
+
+    // ---- sound ----------------------------------------------------------
+    // Synthesised, so the game ships no audio files. A game owns audio outright
+    // here: getting to this page destroyed the player's <audio>, so there is no
+    // second claimant to fight over focus with.
+
+    var audio = (function () {
+        var ctx = null;
+        function context() {
+            if (ctx) return ctx;
+            var Ctor = window.AudioContext || window.webkitAudioContext;
+            if (!Ctor) return null;
+            try { ctx = new Ctor(); } catch (e) { return null; }
+            return ctx;
+        }
+        function tone(freq, delay, dur, vol) {
+            var c = context();
+            if (!c) return;
+            // Browsers start the context suspended until a gesture; every call
+            // here follows a tap, so resuming is always allowed.
+            if (c.state === 'suspended') { try { c.resume(); } catch (e) { return; } }
+            try {
+                var osc = c.createOscillator();
+                var gain = c.createGain();
+                var t0 = c.currentTime + delay;
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.0001, t0);
+                gain.gain.linearRampToValueAtTime(vol, t0 + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+                osc.connect(gain);
+                gain.connect(c.destination);
+                osc.start(t0);
+                osc.stop(t0 + dur + 0.03);
+            } catch (e) { /* audio is a nicety, never a failure */ }
+        }
+        return {
+            flip:  function () { tone(480, 0, 0.10, 0.08); },
+            match: function () { tone(660, 0, 0.16, 0.13); tone(990, 0.11, 0.26, 0.11); },
+            miss:  function () { tone(280, 0, 0.13, 0.06); },
+            clear: function () {
+                [523, 659, 784, 1047].forEach(function (f, i) { tone(f, i * 0.12, 0.34, 0.12); });
+            },
+            hush: function () { if (ctx) { try { ctx.suspend(); } catch (e) {} } },
+            wake: function () { if (ctx) { try { ctx.resume(); } catch (e) {} } }
+        };
+    })();
+
+    // ---- layout ---------------------------------------------------------
+
+    /* Portrait wants more rows than columns and landscape the reverse, so the
+       cards stay near enough to square at either orientation. The grid fills the
+       stage exactly (every track is 1fr), which is why the board can never
+       overflow into a scroll no matter how the phone is held. */
+    var SHAPES = { 4: [2, 2], 6: [2, 3], 8: [2, 4], 12: [3, 4] };
+
+    function shapeFor(cardCount) {
+        var s = SHAPES[cardCount];
+        if (!s) {
+            var a = Math.ceil(Math.sqrt(cardCount));
+            s = [Math.ceil(cardCount / a), a];
+        }
+        var small = Math.min(s[0], s[1]);
+        var large = Math.max(s[0], s[1]);
+        var portrait = window.innerHeight >= window.innerWidth;
+        return portrait ? { cols: small, rows: large } : { cols: large, rows: small };
+    }
+
+    function applyShape() {
+        var count = board.children.length;
+        if (!count) return;
+        var s = shapeFor(count);
+        board.style.setProperty('--cm-cols', s.cols);
+        board.style.setProperty('--cm-rows', s.rows);
+
+        /* Square the cells against the stage. CSS alone can't do this: keeping a
+           grid square needs both the available width and height at once, and
+           aspect-ratio plus max-width/max-height fight each other the moment one
+           of them binds. Measuring is simpler and exact. */
+        var stage = board.parentElement;
+        var cs = getComputedStyle(board);
+        var gapX = parseFloat(cs.columnGap) || 0;
+        var gapY = parseFloat(cs.rowGap) || 0;
+        var availW = stage.clientWidth  - gapX * (s.cols - 1);
+        var availH = stage.clientHeight - gapY * (s.rows - 1);
+        var cell = Math.floor(Math.min(availW / s.cols, availH / s.rows));
+        if (cell > 0) board.style.setProperty('--cm-cell', cell + 'px');
+    }
+
+    window.addEventListener('resize', applyShape);
+    window.addEventListener('orientationchange', applyShape);
+
+    // ---- dealing --------------------------------------------------------
+
+    function shuffle(list) {
+        for (var i = list.length - 1; i > 0; i--) {
+            var j = Math.floor(Math.random() * (i + 1));
+            var t = list[i]; list[i] = list[j]; list[j] = t;
+        }
+        return list;
+    }
+
+    function cardEl(cover) {
+        var btn = document.createElement('button');
+        btn.className = 'cm-card';
+        btn.type = 'button';
+        btn.dataset.id = cover.id;
+        btn.setAttribute('aria-label', cover.title);
+
+        var back = document.createElement('span');
+        back.className = 'cm-face cm-back';
+        back.textContent = '★';
+
+        var front = document.createElement('span');
+        front.className = 'cm-face cm-front';
+        var img = document.createElement('img');
+        img.src = cover.cover;
+        img.alt = '';
+        front.appendChild(img);
+
+        btn.appendChild(back);
+        btn.appendChild(front);
+        btn.addEventListener('click', function () { tap(btn); });
+        return btn;
+    }
+
+    function deal() {
+        clearTimers();
+        first = null;
+        busy = true;
+        var pairs = LEVELS[Math.min(level, LEVELS.length - 1)];
+
+        fetch('/games/api/pictures?source=' + encodeURIComponent(SOURCE) + '&count=' + pairs,
+              { cache: 'no-store' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var covers = (data && data.pictures) || [];
+                if (covers.length < 2) { failed(); return; }
+
+                var deck = [];
+                covers.forEach(function (c) { deck.push(c, c); });
+                shuffle(deck);
+
+                board.innerHTML = '';
+                deck.forEach(function (c) { board.appendChild(cardEl(c)); });
+                remaining = covers.length;
+                applyShape();
+                busy = false;
+            })
+            .catch(failed);
+    }
+
+    function failed() {
+        busy = false;
+        board.innerHTML = '<p class="cm-oops">No pictures to play with yet!</p>';
+        board.style.setProperty('--cm-cols', 1);
+        board.style.setProperty('--cm-rows', 1);
+    }
+
+    // ---- play -----------------------------------------------------------
+
+    function tap(btn) {
+        if (busy) return;
+        if (btn.classList.contains('cm-card-up') || btn.classList.contains('cm-card-done')) return;
+
+        btn.classList.add('cm-card-up');
+        audio.flip();
+
+        if (!first) { first = btn; return; }
+
+        if (first.dataset.id === btn.dataset.id) {
+            var a = first, b = btn;
+            first = null;
+            remaining--;
+            audio.match();
+            later(function () {
+                a.classList.add('cm-card-done');
+                b.classList.add('cm-card-done');
+                if (remaining === 0) won();
+            }, 260);
+            return;
+        }
+
+        // Wrong pair: hold both face up long enough to be seen, then turn back.
+        busy = true;
+        var x = first, y = btn;
+        first = null;
+        audio.miss();
+        later(function () {
+            x.classList.remove('cm-card-up');
+            y.classList.remove('cm-card-up');
+            busy = false;
+        }, 900);
+    }
+
+    function won() {
+        busy = true;
+        audio.clear();
+        cheer.classList.add('cm-cheer-visible');
+        if (level < LEVELS.length - 1) level++;
+        later(function () {
+            cheer.classList.remove('cm-cheer-visible');
+            deal();
+        }, 1900);
+    }
+
+    // ---- shell hooks ----------------------------------------------------
+
+    if (window.FunForgeGame) {
+        window.FunForgeGame.onPause(function () { audio.hush(); });
+        window.FunForgeGame.onResume(function () { audio.wake(); });
+    }
+
+    deal();
+})();
+</script>
+{% endblock %}

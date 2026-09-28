@@ -5,11 +5,19 @@
 {% endblock %}
 
 {% block content %}
-<div class="dashboard">
-    <h2 class="page-title">Games</h2>
-
-    <div class="empty-state" style="background:#ffffffcc; border-radius:20px;">
-        <p class="empty-message">🎮 Games are coming soon.</p>
-    </div>
+{# The picker, and the last screen with an easy way out: tapping a game commits
+   to it, and leaving costs a grown-up's PIN from then on. One tile per game, in
+   the same visual language as the home tiles. #}
+<div class="game-picker">
+    <a href="/games/cover-match/" class="game-card game-card-match">
+        <span class="game-card-icon">🃏</span>
+        <span class="game-card-text">Match the Covers</span>
+    </a>
+    {% if family_ready %}
+    <a href="/games/family-match/" class="game-card game-card-family">
+        <span class="game-card-icon">📸</span>
+        <span class="game-card-text">Match the Family</span>
+    </a>
+    {% endif %}
 </div>
 {% endblock %}

@@ -269,8 +269,108 @@ def run(page, errors):
     ok("home is four tiles (Songs / Stories / Videos / Games), centred, no scrolling")
 
     go("/games/")
-    assert page.locator(".page-title").inner_text().strip() == "Games", "the Games door opens onto nothing"
-    ok("the Games tile opens the Games page")
+    assert page.locator(".game-card").count() >= 1, "the Games door opens onto nothing"
+    ok("the Games tile opens a picker with at least one game")
+
+    # ---- games ---------------------------------------------------------------
+    section("Games (a game you start is a game you finish)")
+
+    def pairs_on_board():
+        ids = page.eval_on_selector_all(".cm-card", "els => els.map(e => e.dataset.id)")
+        groups = {}
+        for i, cid in enumerate(ids):
+            groups.setdefault(cid, []).append(i)
+        return groups
+
+    page.evaluate("localStorage.removeItem('funforge_unlocked')")
+    go("/games/")
+    page.click(".game-card")
+    page.wait_for_selector(".cm-card")
+    page.wait_for_timeout(500)
+
+    assert page.locator(".cm-card").count() == 4, "first board should be the easiest (2 pairs)"
+    assert page.evaluate("getComputedStyle(document.querySelector('.header')).display") == "none", \
+        "the shared header (and its ⬅️ Home button) is visible inside a game"
+    ok("a game opens full-bleed with no one-tap way out")
+
+    # Cells must stay square — album art is square, and 1fr tracks on a phone
+    # cropped the middle out of every cover.
+    box = page.evaluate("""() => {
+        const r = document.querySelector('.cm-card').getBoundingClientRect();
+        return Math.abs(r.width - r.height);
+    }""")
+    assert box <= 2, f"cards are {box}px off square, covers will be cropped"
+    assert page.evaluate("document.body.scrollHeight - innerHeight") <= 0, "the board scrolls"
+    ok("cards are square and the board never scrolls")
+
+    # The Android hardware Back key runs webView.goBack() regardless of what this
+    # page wants (MainActivity.onKeyDown), so the shell traps history instead.
+    for _ in range(4):
+        page.go_back()
+        page.wait_for_timeout(250)
+    assert "/games/cover-match/" in page.url, f"Back escaped the game — now at {page.url}"
+    assert page.locator(".cm-card").count() == 4, "Back tore the board down"
+    ok("Back can't leave a game, however many times it's pressed")
+
+    groups = pairs_on_board()
+    for idxs in groups.values():
+        for i in idxs:
+            page.locator(".cm-card").nth(i).click()
+            page.wait_for_timeout(120)
+        page.wait_for_timeout(320)
+    assert page.locator(".cm-card-done").count() == 4, "matched pairs did not stay face up"
+    ok("matching a pair locks it face up")
+
+    page.wait_for_timeout(2400)
+    assert page.locator(".cm-card").count() == 6, "clearing the board did not deal a bigger one"
+    ok("clearing deals the next board up — endless, with no way to lose")
+
+    page.click("#gameExitBtn")
+    page.wait_for_timeout(300)
+    assert page.locator("#pinOverlay").count() == 1, "the exit let go without a PIN"
+    for digit in "9999":
+        page.click(f'.pin-key[data-digit="{digit}"]')
+    page.wait_for_timeout(500)
+    assert "/games/cover-match/" in page.url, "a wrong PIN got out of the game"
+    ok("leaving costs a PIN, and a wrong one doesn't")
+
+    for digit in "1234":
+        page.click(f'.pin-key[data-digit="{digit}"]')
+    page.wait_for_timeout(900)
+    assert page.url.rstrip("/").endswith("/games"), f"right PIN did not leave, at {page.url}"
+    # KidLock unlocks globally on success; a game that started locked puts it back,
+    # or one PIN entry would leave every later game freely exitable.
+    assert not page.evaluate("KidLock.isUnlocked()"), \
+        "exiting a game left the whole app unlocked"
+    ok("the right PIN leaves, and re-locks the app behind it")
+
+    # The family game only exists once photos have been synced from Immich and
+    # approved, so this is conditional rather than a hard requirement.
+    if page.locator(".game-card-family").count():
+        page.click(".game-card-family")
+        page.wait_for_selector(".cm-card")
+        page.wait_for_timeout(500)
+        srcs = page.eval_on_selector_all(".cm-front img", "els => els.map(e => e.getAttribute('src'))")
+        assert srcs and all("/static/faces/" in s for s in srcs), \
+            f"family board is not using the cached face photos: {srcs[:2]}"
+        page.go_back()
+        page.wait_for_timeout(300)
+        assert "/games/family-match/" in page.url, "Back escaped the family game"
+        ok("Match the Family deals approved photos and locks the same way")
+
+        # Only approved photos may ever reach a board.
+        import json as _json
+        allowed = page.evaluate("""async () => {
+            const r = await fetch('/games/api/pictures?source=family&count=24');
+            return (await r.json()).pictures.map(p => p.cover);
+        }""")
+        page.goto(BASE + "/games/photos/", wait_until="networkidle")
+        on = page.eval_on_selector_all(".fp-photo-on", "els => els.map(e => e.dataset.id)")
+        assert all(any(i in c for i in on) for c in allowed), \
+            "an unapproved photo was served to a game board"
+        ok("unapproved photos never reach a board")
+    else:
+        ok("family game correctly hidden — no approved photos synced")
 
     # ---- player card --------------------------------------------------------
     section("Player card")

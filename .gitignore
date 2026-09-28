@@ -67,3 +67,8 @@ android/app/build/
 # Cover art extracted from the music files by the scanner — 14MB of derived
 # data that a startup scan regenerates, same rationale as data/.
 src/fun_forge/static/covers/
+
+# Family photos pulled from Immich by scripts/sync_immich_faces.py. THIS REPO IS
+# PUBLIC — pictures of the kids must never be committed to it. Same treatment as
+# the cover art above: derived, re-syncable, and none of GitHub's business.
+src/fun_forge/static/faces/

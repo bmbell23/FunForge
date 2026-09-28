@@ -1,22 +1,183 @@
 """Games routes.
 
-Just the door for now: the home page's fourth tile needs somewhere to land. How
-games are actually built and run is decided in issue #3.
+One route per game, deliberately — the same shape `videos.py` and `podcasts.py`
+already use. A scanned `games/` directory with a manifest would be tidier once
+there are half a dozen games, but building that plugin layer before the second
+game exists is how the abstraction ends up wrong. See issue #3.
+
+The two match games share one template and differ only in where their pictures
+come from, which is the whole reason `/games/api/pictures` takes a `source`.
 """
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+import json
+import random
+from pathlib import Path
 
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from ..database import get_db
+from ..models import Album
 from ..templating import templates
 
 router = APIRouter(prefix="/games")
 
+# Board sizes the match game walks through, easiest first. It stops at the last
+# one and stays there rather than getting harder forever: this is an endless toy,
+# not a difficulty ladder, and a three-year-old who hits a wall just leaves.
+MATCH_LEVELS = [2, 3, 4, 6]
+
+# Written by scripts/sync_immich_faces.py, which runs on the host. The app never
+# talks to Immich itself — it reads this file and the cached thumbnails beside it,
+# so the family games keep working when Immich is down.
+FAMILY_MANIFEST = Path("/app/data/family_photos.json")
+
+
+# ---------------------------------------------------------------------------
+# family photo manifest
+# ---------------------------------------------------------------------------
+
+def load_family_photos(approved_only: bool = True):
+    """Cached family photos. Returns [] for every failure — a missing or broken
+    manifest must degrade to "no family game", never to a 500 on the picker."""
+    try:
+        data = json.loads(FAMILY_MANIFEST.read_text())
+    except (OSError, ValueError):
+        return []
+    photos = data.get("photos") or []
+    if approved_only:
+        photos = [p for p in photos if p.get("approved")]
+    return photos
+
+
+def save_family_approvals(approved_ids):
+    """Write the approved set back to the manifest, leaving everything else be."""
+    try:
+        data = json.loads(FAMILY_MANIFEST.read_text())
+    except (OSError, ValueError):
+        return False
+    wanted = set(approved_ids)
+    for photo in data.get("photos", []):
+        photo["approved"] = photo.get("id") in wanted
+    try:
+        FAMILY_MANIFEST.write_text(json.dumps(data, indent=2))
+    except OSError:
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# pages
+# ---------------------------------------------------------------------------
 
 @router.get("/", response_class=HTMLResponse)
 async def games_home(request: Request):
-    """Games landing page."""
+    """The picker — every game the app has, as one tile each.
+
+    The family game only appears once there are at least two approved photos:
+    a tile that opens onto an empty board is worse than no tile, because a kid
+    who taps it is then locked into nothing.
+    """
+    family_ready = len(load_family_photos()) >= 2
     return templates.TemplateResponse(
         request,
         "games/index.html",
-        {"title": "Games"},
+        {"title": "Games", "family_ready": family_ready},
     )
+
+
+@router.get("/cover-match/", response_class=HTMLResponse)
+async def cover_match(request: Request):
+    """Match the pairs, played with the covers out of the kid's own library."""
+    return templates.TemplateResponse(
+        request,
+        "games/match.html",
+        {"title": "Match the Covers", "levels": MATCH_LEVELS, "source": "covers"},
+    )
+
+
+@router.get("/family-match/", response_class=HTMLResponse)
+async def family_match(request: Request):
+    """The same game, played with approved photos of the family."""
+    return templates.TemplateResponse(
+        request,
+        "games/match.html",
+        {"title": "Match the Family", "levels": MATCH_LEVELS, "source": "family"},
+    )
+
+
+@router.get("/photos/", response_class=HTMLResponse)
+async def family_photos_admin(request: Request):
+    """Parent screen: tick which cached photos may appear in a game.
+
+    Nothing Immich hands over is approved by syncing. Face recognition returns
+    *every* photo of a child — bath time, hospital trips, whatever else is in a
+    family library — so a grown-up looks first.
+    """
+    photos = load_family_photos(approved_only=False)
+    return templates.TemplateResponse(
+        request,
+        "games/photos.html",
+        {
+            "title": "Family Photos",
+            "photos": photos,
+            "approved_count": sum(1 for p in photos if p.get("approved")),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# api
+# ---------------------------------------------------------------------------
+
+@router.get("/api/pictures")
+async def pictures(source: str = "covers", count: int = 6,
+                   db: Session = Depends(get_db)):
+    """`count` random pictures for a game board.
+
+    Album covers are deduplicated by image path, not by album id: two albums by
+    the same artist can share one cover file, and a "pair" of two different
+    albums wearing the same picture is unmatchable-looking nonsense to a kid.
+    """
+    count = max(1, min(count, 24))
+
+    if source == "family":
+        photos = load_family_photos()
+        random.shuffle(photos)
+        return {"pictures": [
+            {"id": p["id"], "title": p.get("person", ""), "cover": f"/static/{p['file']}"}
+            for p in photos[:count]
+        ]}
+
+    rows = (
+        db.query(Album.id, Album.title, Album.cover_art_path)
+        .filter(Album.cover_art_path.isnot(None), Album.cover_art_path != "")
+        .order_by(func.random())
+        .limit(count * 3)          # over-fetch so dedupe still leaves enough
+        .all()
+    )
+
+    seen, pics = set(), []
+    for album_id, title, path in rows:
+        if path in seen:
+            continue
+        seen.add(path)
+        pics.append({"id": album_id, "title": title, "cover": path})
+        if len(pics) == count:
+            break
+
+    return {"pictures": pics}
+
+
+@router.post("/api/photos/approve")
+async def approve_photos(request: Request):
+    """Replace the approved set with whatever the parent screen ticked."""
+    body = await request.json()
+    ids = body.get("approved")
+    if not isinstance(ids, list):
+        return JSONResponse({"ok": False, "error": "approved must be a list"}, 400)
+    if not save_family_approvals(ids):
+        return JSONResponse({"ok": False, "error": "no photo manifest"}, 400)
+    return {"ok": True, "approved": len(ids)}
