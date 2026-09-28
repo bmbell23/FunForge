@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "KidMedia"
+rootProject.name = "FunForge"
 include ':app'

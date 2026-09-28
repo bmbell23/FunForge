@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+
+{% block header_nav %}
+<a href="/podcasts/" class="back-button" id="backButton">⬅️ Back</a>
+{% endblock %}
+
+{% block content %}
+<div class="album-view" style="padding: 20px;">
+    <div class="album-header">
+        <div class="album-cover-large">
+            {% if show.cover_art_path %}
+            <img src="{{ show.cover_art_path }}" alt="{{ show.title }}">
+            {% else %}
+            <div class="album-cover-placeholder-large">🎙️</div>
+            {% endif %}
+        </div>
+
+        <div class="album-details">
+            <h2 class="album-title-large">{{ show.title }}</h2>
+            <p class="album-artist-large">{{ show.episodes | length }} episode{{ 's' if show.episodes | length != 1 else '' }}</p>
+            <div id="showActionBtns" style="display:flex; flex-direction:column; gap:10px; margin-top:15px;">
+                <button class="add-all-btn" id="queueAllBtn" onclick="addAllToQueue()" style="display:none;">➕ Queue All</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="track-list" id="episodeList">
+        {% for ep in show.episodes %}
+        <div class="track-item" data-episode-id="{{ ep.id }}" onclick="pickEpisode({{ ep.id }})">
+            <div class="episode-emoji" id="emoji-{{ ep.id }}">{{ ep.emoji }}</div>
+            <div class="track-info">
+                <div class="track-title">{{ ep.title }}</div>
+                {% if ep.duration %}
+                <div class="track-duration">{{ ep.duration|format_duration }}</div>
+                {% endif %}
+            </div>
+            <div class="track-play-icon">▶️</div>
+        </div>
+        {% endfor %}
+
+        {% if not show.episodes %}
+        <div class="empty-state">
+            <p class="empty-message">No episodes found in this show.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Toast -->
+<div id="showToast" class="album-toast" style="display:none;">
+    <span id="toastMessage"></span>
+</div>
+
+<!-- Emoji Picker Popover -->
+<div id="emojiPicker" class="emoji-picker" style="display:none;">
+    <div class="emoji-picker-title">Pick an emoji</div>
+    <div class="emoji-picker-grid" id="emojiGrid"></div>
+    <button class="emoji-picker-cancel" onclick="closeEmojiPicker()">Cancel</button>
+</div>
+<div id="emojiPickerOverlay" style="display:none;position:fixed;inset:0;z-index:1998;" onclick="closeEmojiPicker()"></div>
+
+<script>
+const episodes = {{ episodes_data | tojson }};
+const showTitle = {{ show.title | tojson }};
+const showCover = {{ (show.cover_art_path or '') | tojson }};
+const isParentMode = KidLock.isUnlocked();
+
+const PODCAST_EMOJIS = [
+    '🎙️','🎵','📻','🎤','🌟','🎯','📖','🌈',
+    '🦁','🐶','🐱','🐸','🦋','🌺','⭐','🚀',
+    '🦊','🐻','🐧','🦄','🍦','🍕','🎸','🎹',
+    '🎺','🥁','🎉','💡','🌍','🏆','❤️','😄',
+];
+
+let activeEmojiEpisodeId = null;
+let pickInFlight = false;
+
+function makeQueueItem(ep) {
+    return {
+        id: ep.id,
+        title: ep.title,
+        emoji: ep.emoji,
+        show_title: showTitle,
+        cover_art: showCover || null,
+        duration: ep.duration,
+        episode_number: ep.episode_number,
+        show_id: ep.show_id,
+    };
+}
+
+function pickEpisode(episodeId) {
+    if (pickInFlight) return;
+    const ep = episodes.find(e => e.id === episodeId);
+    if (!ep) return;
+
+    pickInFlight = true;
+
+    localStorage.removeItem('funforge_podcast_queue_add');
+    localStorage.removeItem('funforge_podcast_play_now');
+    localStorage.setItem('funforge_podcast_pick_one', JSON.stringify({
+        ...makeQueueItem(ep),
+        _nonce: Date.now(),
+    }));
+    showToast(`${ep.emoji} Picked "${ep.title}"`);
+
+    setTimeout(() => { window.location.replace('/podcasts/'); }, 250);
+}
+
+function addEpisodeToQueueParent(episodeId) {
+    const ep = episodes.find(e => e.id === episodeId);
+    if (!ep) return;
+    const pending = JSON.parse(localStorage.getItem('funforge_podcast_queue_add') || '[]');
+    pending.push(makeQueueItem(ep));
+    localStorage.setItem('funforge_podcast_queue_add', JSON.stringify(pending));
+    showToast(`${ep.emoji} Queued "${ep.title}"`);
+    setTimeout(() => { window.location.replace('/podcasts/'); }, 250);
+}
+
+function addAllToQueue() {
+    const pending = JSON.parse(localStorage.getItem('funforge_podcast_queue_add') || '[]');
+    episodes.forEach(ep => pending.push(makeQueueItem(ep)));
+    localStorage.setItem('funforge_podcast_queue_add', JSON.stringify(pending));
+    showToast(`➕ Queued ${episodes.length} episodes!`);
+    setTimeout(() => { window.location.href = '/podcasts/'; }, 450);
+}
+
+function playEpisodeNow(episodeId) {
+    const ep = episodes.find(e => e.id === episodeId);
+    if (!ep) return;
+    localStorage.setItem('funforge_podcast_play_now', JSON.stringify([makeQueueItem(ep)]));
+    showToast(`▶️ Playing "${ep.title}"…`);
+    setTimeout(() => { window.location.href = '/podcasts/'; }, 450);
+}
+
+function showToast(msg) {
+    const toast = document.getElementById('showToast');
+    document.getElementById('toastMessage').textContent = msg;
+    toast.style.display = 'flex';
+    setTimeout(() => { toast.style.display = 'none'; }, 1600);
+}
+
+// ── Emoji picker ──
+function openEmojiPicker(episodeId) {
+    activeEmojiEpisodeId = episodeId;
+    const grid = document.getElementById('emojiGrid');
+    const current = episodes.find(e => e.id === episodeId)?.emoji || '🎙️';
+    grid.innerHTML = PODCAST_EMOJIS.map(emoji => `
+        <button class="emoji-option${emoji === current ? ' emoji-selected' : ''}"
+                onclick="selectEmoji('${emoji}')">${emoji}</button>
+    `).join('');
+    document.getElementById('emojiPicker').style.display = 'flex';
+    document.getElementById('emojiPickerOverlay').style.display = 'block';
+}
+
+function closeEmojiPicker() {
+    document.getElementById('emojiPicker').style.display = 'none';
+    document.getElementById('emojiPickerOverlay').style.display = 'none';
+    activeEmojiEpisodeId = null;
+}
+
+async function selectEmoji(emoji) {
+    if (!activeEmojiEpisodeId) return;
+    const epId = activeEmojiEpisodeId;
+    closeEmojiPicker();
+    try {
+        const r = await fetch(`/podcasts/api/episodes/${epId}/emoji`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ emoji }),
+        });
+        if (r.ok) {
+            document.getElementById(`emoji-${epId}`).textContent = emoji;
+            const ep = episodes.find(e => e.id === epId);
+            if (ep) ep.emoji = emoji;
+        }
+    } catch(e) {
+        console.error('Failed to update emoji', e);
+    }
+}
+
+// ── Parent mode setup ──
+if (isParentMode) {
+    document.addEventListener('DOMContentLoaded', () => {
+        const queueAllBtn = document.getElementById('queueAllBtn');
+        if (queueAllBtn) queueAllBtn.style.display = 'inline-block';
+
+        const actionBtns = document.getElementById('showActionBtns');
+        if (actionBtns) {
+            const playBtn = document.createElement('button');
+            playBtn.className = 'play-album-now-btn';
+            playBtn.textContent = '▶️ Play All Now';
+            playBtn.onclick = () => {
+                const pending = episodes.map(makeQueueItem);
+                localStorage.setItem('funforge_podcast_play_now', JSON.stringify(pending));
+                showToast('▶️ Playing all episodes…');
+                setTimeout(() => { window.location.href = '/podcasts/'; }, 450);
+            };
+            actionBtns.insertBefore(playBtn, actionBtns.firstChild);
+        }
+
+        document.querySelectorAll('.track-item').forEach(item => {
+            const epId = parseInt(item.dataset.episodeId);
+            if (!epId) return;
+
+            // Make emoji tappable in parent mode
+            const emojiEl = item.querySelector('.episode-emoji');
+            if (emojiEl) {
+                emojiEl.classList.add('emoji-tappable');
+                emojiEl.title = 'Tap to change emoji';
+                emojiEl.onclick = (e) => { e.stopPropagation(); openEmojiPicker(epId); };
+            }
+
+            // Replace single play icon with play-now + queue controls
+            item.removeAttribute('onclick');
+            const playIcon = item.querySelector('.track-play-icon');
+            if (playIcon) {
+                const controls = document.createElement('div');
+                controls.className = 'track-parent-controls';
+                controls.innerHTML = `
+                    <button class="track-play-now-btn"
+                            onclick="event.stopPropagation(); playEpisodeNow(${epId})"
+                            title="Play now">▶️</button>
+                    <button class="track-add-queue-btn"
+                            onclick="event.stopPropagation(); addEpisodeToQueueParent(${epId})"
+                            title="Add to queue">➕</button>`;
+                playIcon.replaceWith(controls);
+            }
+        });
+    });
+}
+</script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.episode-emoji {
+    font-size: 28px;
+    min-width: 44px;
+    text-align: center;
+    flex-shrink: 0;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.emoji-tappable {
+    cursor: pointer;
+    border-radius: 8px;
+    padding: 4px;
+    transition: background 0.15s;
+}
+
+.emoji-tappable:active {
+    background: rgba(0,0,0,0.1);
+}
+
+.add-all-btn {
+    background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
+    color: white; border: none;
+    padding: 18px 30px; border-radius: 14px;
+    font-size: 22px; font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+.add-all-btn:active { transform: scale(0.95); }
+
+.album-toast {
+    position: fixed; bottom: 30px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.85); color: white;
+    padding: 16px 30px; border-radius: 14px;
+    font-size: 20px; font-weight: bold;
+    z-index: 9999; display: flex;
+    align-items: center; gap: 10px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+/* Emoji Picker */
+.emoji-picker {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: white;
+    border-radius: 20px 20px 0 0;
+    padding: 20px;
+    z-index: 1999;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.2);
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.emoji-picker-title {
+    font-size: 20px;
+    font-weight: bold;
+    text-align: center;
+    color: #555;
+}
+
+.emoji-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 8px;
+}
+
+.emoji-option {
+    font-size: 28px;
+    background: none;
+    border: 2px solid transparent;
+    border-radius: 10px;
+    padding: 6px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    line-height: 1;
+}
+
+.emoji-option:active,
+.emoji-option:hover {
+    background: #f0f0f0;
+}
+
+.emoji-option.emoji-selected {
+    border-color: #667eea;
+    background: #eef0ff;
+}
+
+.emoji-picker-cancel {
+    background: #eee;
+    border: none;
+    border-radius: 12px;
+    padding: 14px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    color: #555;
+}
+.emoji-picker-cancel:active { background: #ddd; }
+</style>
+{% endblock %}

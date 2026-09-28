@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end smoke test for KidMedia's player, parent lock and Android bridge.
+"""End-to-end smoke test for FunForge's player, parent lock and Android bridge.
 
 Drives a real browser against the running container, so it covers the things
 that only break in a browser: the global parent lock, the in-page album/show
@@ -18,11 +18,11 @@ from playwright.sync_api import sync_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8006"
 
-# Stands in for the Android shell's window.KidMedia, recording every call so we
+# Stands in for the Android shell's window.FunForge, recording every call so we
 # can assert the page actually drives the foreground media service.
 FAKE_BRIDGE = """
 window.__bridgeCalls = [];
-window.KidMedia = {
+window.FunForge = {
   isNativeApp: () => true,
   mediaStart: (t,a,c) => window.__bridgeCalls.push(['start',t,a,c]),
   mediaMeta:  (t,a,c) => window.__bridgeCalls.push(['meta',t,a,c]),
@@ -95,9 +95,9 @@ def run(page, errors):
 
     # ---- native media bridge ------------------------------------------------
     section("Android media bridge (background playback + lock-screen controls)")
-    page.evaluate("localStorage.setItem('kidmedia_unlocked','true')")
+    page.evaluate("localStorage.setItem('funforge_unlocked','true')")
     go("/music/")
-    assert page.evaluate("KidMediaNative.isNative"), "native bridge not detected"
+    assert page.evaluate("FunForgeNative.isNative"), "native bridge not detected"
     assert page.evaluate("typeof window.__mediaControl === 'function'"), "__mediaControl missing"
     ok("bridge detected and window.__mediaControl installed")
 
@@ -168,7 +168,7 @@ def run(page, errors):
     assert not page.evaluate("audioPlayer.paused"), "music stopped while browsing"
     ok("music keeps playing while browsing albums and artists")
 
-    page.evaluate("closeMediaSheet(); clearQueue(); localStorage.removeItem('kidmedia_unlocked')")
+    page.evaluate("closeMediaSheet(); clearQueue(); localStorage.removeItem('funforge_unlocked')")
     go("/podcasts/")
     page.wait_for_timeout(800)
     assert page.evaluate("allEpisodes.length") > 0, "episode list never loaded"
@@ -196,13 +196,20 @@ def run(page, errors):
 
     # ---- player card --------------------------------------------------------
     section("Player card")
-    page.evaluate("localStorage.setItem('kidmedia_unlocked','true')")
+    page.evaluate("localStorage.setItem('funforge_unlocked','true')")
     go("/music/")
     card = page.locator("#nowPlaying")
     assert "player-card-idle" in (card.get_attribute("class") or ""), \
         "player card does not start idle"
     assert page.locator(".sidebar-controls").count() == 0, "the old black control strip is back"
     ok("idle player card, no separate control strip")
+
+    # The track list arrives asynchronously. Slicing it before it lands builds an
+    # empty queue, nothing plays, and every assertion below fails for a reason
+    # that has nothing to do with the player — the actual cause of this test
+    # failing roughly one run in three.
+    page.wait_for_function("() => Array.isArray(allTracks) && allTracks.length >= 10",
+                           timeout=15000)
 
     # Fill both kids' picks so the interleaved queue builds and starts.
     page.evaluate("""() => {
@@ -211,7 +218,13 @@ def run(page, errors):
         buildAndStartPlayQueue();
         updateTurnIndicator(); renderQueue(); renderSongGrid();
     }""")
-    page.wait_for_timeout(2500)
+    # Wait on the condition, not the clock. A flat sleep here raced audio
+    # start-up in headless Chromium and failed about one run in three.
+    page.wait_for_function(
+        """() => !audioPlayer.paused
+                 && !document.getElementById('nowPlaying').classList.contains('player-card-idle')
+                 && parseFloat(document.getElementById('pcBarFill').style.width || '0') > 0""",
+        timeout=15000)
     assert not page.evaluate("audioPlayer.paused"), "queue did not start playing"
     assert "player-card-idle" not in (card.get_attribute("class") or ""), "card stayed idle"
     assert page.evaluate("document.getElementById('nowPlaying').style.getPropertyValue('--pc-accent')"), \

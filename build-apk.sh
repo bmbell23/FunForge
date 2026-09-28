@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build the KidMedia debug APK and stage it where the running container serves it,
+# Build the FunForge debug APK and stage it where the running container serves it,
 # so the phone can install (or self-update to) the new build.
 #
 # Usage:  ./build-apk.sh           # build + stage
@@ -46,7 +46,7 @@ else
 fi
 export VERSION_CODE VERSION_NAME
 
-echo "🔨 Building KidMedia debug APK (version $VERSION_NAME, versionCode $VERSION_CODE)…"
+echo "🔨 Building FunForge debug APK (version $VERSION_NAME, versionCode $VERSION_CODE)…"
 
 # Regenerate launcher icons so an edit to make_icons.py can't drift from the APK.
 python3 "$REPO_ROOT/scripts/make_icons.py" >/dev/null
@@ -60,7 +60,7 @@ fi
 ./gradlew assembleDebug
 
 SRC="app/build/outputs/apk/debug/app-debug.apk"
-DEST="$DATA_DIR/kidmedia.apk"
+DEST="$DATA_DIR/funforge.apk"
 
 if [ ! -f "$SRC" ]; then
     echo "❌ Build succeeded but APK not found at $SRC"
@@ -71,7 +71,7 @@ mkdir -p "$DATA_DIR"
 cp "$SRC" "$DEST"
 
 # Written last so a phone can never see a new version.json before the APK.
-printf '{"versionCode": %s, "versionName": "%s", "url": "/download/kidmedia.apk"}\n' \
+printf '{"versionCode": %s, "versionName": "%s", "url": "/download/funforge.apk"}\n' \
     "$VERSION_CODE" "$VERSION_NAME" > "$DATA_DIR/version.json"
 
 SIZE=$(stat -c%s "$DEST" 2>/dev/null || stat -f%z "$DEST")
@@ -84,7 +84,7 @@ echo "   size:        $SIZE bytes"
 echo "   built:       $STAMP"
 echo
 echo "📲 First install (manual, one time):"
-echo "   1. Open http://100.69.184.113:$PORT/download/kidmedia.apk on the phone"
+echo "   1. Open http://100.69.184.113:$PORT/download/funforge.apk on the phone"
 echo "   2. Tap the downloaded file → Install"
 echo
 echo "🔄 After that: bump version.txt, run ./build-apk.sh, and the app offers"

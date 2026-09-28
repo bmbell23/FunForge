@@ -56,7 +56,7 @@ def cleanup_empty_albums(db_path: str):
 
 if __name__ == "__main__":
     # Default database path
-    db_path = "/home/brandon/projects/KidMedia/data/kid_media.db"
+    db_path = "/home/brandon/projects/FunForge/data/fun_forge.db"
     
     if len(sys.argv) > 1:
         db_path = sys.argv[1]

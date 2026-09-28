@@ -1,10 +1,18 @@
-# KidMedia 🎵
+# FunForge 🎵
 
 A kid-friendly, touchscreen-optimized media server designed for young children (2+ years old). Built with Python, FastAPI, and a colorful, large-button interface perfect for little hands.
 
 ## Overview
 
-KidMedia is a custom media server similar to the other Forge projects (ArtForge, LifeForge, CodeForge, etc.) that provides a safe, simple, and fun way for young children to browse and play music on a touchscreen device.
+FunForge is a custom media server similar to the other Forge projects (ArtForge, LifeForge, CodeForge, etc.) that provides a safe, simple, and fun way for young children to browse and play music on a touchscreen device.
+
+> **Formerly KidMedia.** Renamed in Sep 2026 to join the \*Forge family, ahead of
+> adding games as a fourth kind of media. The rename moved the Python package
+> (`kid_media` → `fun_forge`), the container (`kidmedia` → `funforge`), and the
+> Android `applicationId` (`com.kidmedia.app` → `com.funforge.app`). Because the
+> `applicationId` is the app's identity on the device, the old KidMedia APK
+> cannot self-update into FunForge — it has to be uninstalled and replaced once.
+> The old media directory on disk is still `/mnt/boston/media/kid-media/`.
 
 ### MVP Features (Phase 1)
 
@@ -27,11 +35,11 @@ KidMedia is a custom media server similar to the other Forge projects (ArtForge,
 
 ## Architecture
 
-KidMedia follows the same architecture pattern as other Forge projects:
+FunForge follows the same architecture pattern as other Forge projects:
 
 ```
-KidMedia/
-├── src/kid_media/          # Python package
+FunForge/
+├── src/fun_forge/          # Python package
 │   ├── models/             # SQLAlchemy database models
 │   │   ├── album.py
 │   │   ├── artist.py
@@ -42,7 +50,7 @@ KidMedia/
 │   │   └── scanner.py      # Music library scanner
 │   ├── static/             # Static assets (CSS, JS, images)
 │   │   ├── css/
-│   │   └── js/             # kidmedia-lock.js, kidmedia-media.js
+│   │   └── js/             # funforge-lock.js, funforge-media.js
 │   ├── templates/          # Jinja2 HTML templates
 │   │   ├── base.html
 │   │   ├── index.html
@@ -53,7 +61,7 @@ KidMedia/
 │   └── main.py             # FastAPI application
 ├── android/                # Android WebView wrapper (see "Android app")
 ├── scripts/                # make_icons.py (launcher art), smoke_test.py
-├── data/                   # SQLite DB, kidmedia.apk, version.json (gitignored)
+├── data/                   # SQLite DB, funforge.apk, version.json (gitignored)
 ├── logs/                   # Application logs
 ├── build-apk.sh            # Build + stage the Android APK
 ├── version.txt             # Single source of truth for the app version
@@ -73,13 +81,13 @@ KidMedia/
 
 1. **Build and start the container:**
    ```bash
-   cd /home/brandon/projects/KidMedia
+   cd /home/brandon/projects/FunForge
    docker-compose up -d --build
    ```
 
 2. **Check the logs:**
    ```bash
-   docker logs -f kidmedia
+   docker logs -f funforge
    ```
 
 3. **Access the application:**
@@ -118,7 +126,7 @@ The application automatically scans the music library on startup. You can also t
 
 ## Android app
 
-KidMedia ships as a native Android wrapper around the same web app — the pattern
+FunForge ships as a native Android wrapper around the same web app — the pattern
 used by LifeForge and GreatReads. There is no Play Store and no Capacitor: it is a
 hand-written Java `WebView` shell that loads `http://100.69.184.113:8006` over
 Tailscale.
@@ -138,14 +146,14 @@ What the wrapper adds beyond a browser tab:
 ### Building and installing
 
 ```bash
-cd /home/brandon/projects/KidMedia
+cd /home/brandon/projects/FunForge
 ./build-apk.sh              # or ./build-apk.sh --clean
 ```
 
 That builds a debug APK and stages it (with its `version.json`) in `data/`, which
 the container serves at `/download/`. First install, once per device:
 
-1. Open `http://100.69.184.113:8006/download/kidmedia.apk` in the phone's browser
+1. Open `http://100.69.184.113:8006/download/funforge.apk` in the phone's browser
 2. Tap the download → Install
 
 After that, bump `version.txt`, run `./build-apk.sh`, and the installed app offers
@@ -177,13 +185,13 @@ python3 scripts/smoke_test.py          # against http://localhost:8006
 ```
 
 Drives a real browser at phone size and checks the parent lock, the in-page album
-and show sheets, and the Android media bridge (using a stub for `window.KidMedia`).
+and show sheets, and the Android media bridge (using a stub for `window.FunForge`).
 
 ## Configuration
 
 Edit environment variables in `docker-compose.yml`:
 
-- `DATABASE_URL`: SQLite database location (default: `sqlite:///./data/kid_media.db`)
+- `DATABASE_URL`: SQLite database location (default: `sqlite:///./data/fun_forge.db`)
 - `MUSIC_DIR`: Music library path (default: `/music`)
 - `PORT`: Application port (default: `8006`)
 - `PARENT_PIN`: PIN for the parent lock (default: `1234`)
@@ -208,7 +216,7 @@ Edit environment variables in `docker-compose.yml`:
 
 ## Port Assignment
 
-- **KidMedia**: Port 8006
+- **FunForge**: Port 8006
 - Other Forge projects use: 8000-8005, 8007, 8009
 
 ## Troubleshooting
@@ -217,11 +225,11 @@ Edit environment variables in `docker-compose.yml`:
 
 1. Check that music files exist in `/mnt/boston/media/kid-media/music/`
 2. Trigger a manual scan via the web interface
-3. Check logs: `docker logs kidmedia`
+3. Check logs: `docker logs funforge`
 
 ### Container won't start?
 
-1. Check logs: `docker logs kidmedia`
+1. Check logs: `docker logs funforge`
 2. Verify port 8006 is not in use: `ss -tulpn | grep 8006`
 3. Check disk space: `df -h`
 
@@ -236,7 +244,7 @@ Edit environment variables in `docker-compose.yml`:
 To run in development mode with hot-reload:
 
 ```bash
-cd /home/brandon/projects/KidMedia
+cd /home/brandon/projects/FunForge
 docker-compose up --build
 ```
 

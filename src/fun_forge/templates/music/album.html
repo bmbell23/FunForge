@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block header_nav %}
+<a href="/music/" class="back-button" id="backButton">⬅️ Back</a>
+{% endblock %}
+
+{% block content %}
+<div class="album-view" style="padding: 20px;">
+    <div class="album-header">
+        <div class="album-cover-large">
+            {% if album.cover_art_path %}
+            <img src="{{ album.cover_art_path }}" alt="{{ album.title }}">
+            {% else %}
+            <div class="album-cover-placeholder-large">🎵</div>
+            {% endif %}
+        </div>
+
+        <div class="album-details">
+            <h2 class="album-title-large">{{ album.title }}</h2>
+            <p class="album-artist-large">{{ album.album_artist or (album.artist.name if album.artist else "Unknown Artist") }}</p>
+            {% if album.year %}
+            <p class="album-year">{{ album.year }}</p>
+            {% endif %}
+            <div id="albumActionBtns" style="display:flex; flex-direction:column; gap:10px; margin-top:15px;">
+                <button class="add-all-btn" onclick="addAllToQueue()" style="margin-top:0;">➕ Add All to Queue</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="track-list">
+        {% for track in album.tracks %}
+        <div class="track-item" data-track-id="{{ track.id }}" onclick="addTrackToQueue({{ track.id }})">
+            <div class="track-number track-number-{{ loop.index % 10 }}">{{ track.track_number or loop.index }}</div>
+            <div class="track-info">
+                <div class="track-title">{{ track.title }}</div>
+                {% if track.duration %}
+                <div class="track-duration">{{ track.duration|format_duration }}</div>
+                {% endif %}
+            </div>
+            <div class="track-play-icon">➕</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div id="albumToast" class="album-toast" style="display:none;">
+    <span id="toastMessage"></span>
+</div>
+
+<script>
+const tracks = {{ tracks_data | tojson }};
+const albumTitle = '{{ album.title }}';
+const albumCover = '{{ album.cover_art_path or "" }}';
+const albumArtist = '{{ album.album_artist or (album.artist.name if album.artist else "Unknown Artist") }}';
+const isParentMode = KidLock.isUnlocked();
+
+function makeQueueItem(track) {
+    return {
+        id: track.id, title: track.title,
+        artist: albumArtist, album: albumTitle,
+        cover_art: albumCover, duration: track.duration,
+        album_id: track.album_id, track_number: track.track_number
+    };
+}
+
+function addTrackToQueue(trackId) {
+    const track = tracks.find(t => t.id === trackId);
+    if (!track) return;
+    const pending = JSON.parse(localStorage.getItem('funforge_queue_add') || '[]');
+    pending.push(makeQueueItem(track));
+    localStorage.setItem('funforge_queue_add', JSON.stringify(pending));
+    showToast(`➕ Queued "${track.title}"`);
+}
+
+function addAllToQueue() {
+    const pending = JSON.parse(localStorage.getItem('funforge_queue_add') || '[]');
+    tracks.forEach(t => pending.push(makeQueueItem(t)));
+    localStorage.setItem('funforge_queue_add', JSON.stringify(pending));
+    showToast(`➕ Queued ${tracks.length} songs!`);
+}
+
+function playTrackNow(trackId) {
+    const track = tracks.find(t => t.id === trackId);
+    if (!track) return;
+    localStorage.setItem('funforge_play_now', JSON.stringify([makeQueueItem(track)]));
+    showToast(`▶️ Playing "${track.title}"…`);
+    setTimeout(() => window.history.back(), 900);
+}
+
+function playAlbumNow() {
+    localStorage.setItem('funforge_play_now', JSON.stringify(tracks.map(makeQueueItem)));
+    showToast('▶️ Playing album…');
+    setTimeout(() => window.history.back(), 900);
+}
+
+function showToast(msg) {
+    const toast = document.getElementById('albumToast');
+    document.getElementById('toastMessage').textContent = msg;
+    toast.style.display = 'flex';
+    setTimeout(() => { toast.style.display = 'none'; }, 1500);
+}
+
+// Parent mode: add Play Now button + per-track play/queue controls
+if (isParentMode) {
+    document.addEventListener('DOMContentLoaded', () => {
+        const actionBtns = document.getElementById('albumActionBtns');
+        if (actionBtns) {
+            const playBtn = document.createElement('button');
+            playBtn.className = 'play-album-now-btn';
+            playBtn.textContent = '▶️ Play Album Now';
+            playBtn.onclick = playAlbumNow;
+            actionBtns.insertBefore(playBtn, actionBtns.firstChild);
+        }
+        document.querySelectorAll('.track-item').forEach(item => {
+            const trackId = parseInt(item.dataset.trackId);
+            if (!trackId) return;
+            item.removeAttribute('onclick');
+            const playIcon = item.querySelector('.track-play-icon');
+            if (playIcon) {
+                const controls = document.createElement('div');
+                controls.className = 'track-parent-controls';
+                controls.innerHTML = `
+                    <button class="track-play-now-btn"
+                            onclick="event.stopPropagation(); playTrackNow(${trackId})"
+                            title="Play now">▶️</button>
+                    <button class="track-add-queue-btn"
+                            onclick="event.stopPropagation(); addTrackToQueue(${trackId})"
+                            title="Add to queue">➕</button>`;
+                playIcon.replaceWith(controls);
+            }
+        });
+    });
+}
+</script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.add-all-btn {
+    background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
+    color: white; border: none;
+    padding: 18px 30px; border-radius: 14px;
+    font-size: 22px; font-weight: bold;
+    cursor: pointer; margin-top: 15px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+.add-all-btn:active { transform: scale(0.95); }
+
+.album-toast {
+    position: fixed; bottom: 30px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.85); color: white;
+    padding: 16px 30px; border-radius: 14px;
+    font-size: 20px; font-weight: bold;
+    z-index: 9999; display: flex;
+    align-items: center; gap: 10px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+</style>
+{% endblock %}
+

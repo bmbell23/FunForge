@@ -66,4 +66,4 @@ android/app/build/
 
 # Cover art extracted from the music files by the scanner — 14MB of derived
 # data that a startup scan regenerates, same rationale as data/.
-src/kid_media/static/covers/
+src/fun_forge/static/covers/

@@ -1,4 +1,4 @@
-# Claude AI Assistant Guidelines for KidMedia
+# Claude AI Assistant Guidelines for FunForge
 
 ## ⚠️ CRITICAL SAFETY RULES ⚠️
 
@@ -26,27 +26,27 @@
 **For Service Issues:**
 ```bash
 # 1. Diagnose first
-docker logs kidmedia
+docker logs funforge
 df -h
 free -h
 
 # 2. Restart individual service
-cd /home/brandon/projects/KidMedia
+cd /home/brandon/projects/FunForge
 docker compose up -d
 ```
 
 **For Database Issues:**
 ```bash
 # 1. Check logs
-docker logs kidmedia
+docker logs funforge
 
 # 2. Backup database first
-cp data/kid_media.db data/kid_media.db.backup
+cp data/fun_forge.db data/fun_forge.db.backup
 
 # 3. Then proceed with fixes
 ```
 
-## KidMedia-Specific Guidelines
+## FunForge-Specific Guidelines
 
 ### Kid-Friendly Design Principles
 - All touch targets must be at least 80px
@@ -82,8 +82,8 @@ pattern as LifeForge and GreatReads. No Capacitor, no Play Store.
 
 ### Parent lock
 
-One global lock, in `static/js/kidmedia-lock.js`, keyed on `localStorage`
-`kidmedia_unlocked`. Unlocking once unlocks every page until it's locked again.
+One global lock, in `static/js/funforge-lock.js`, keyed on `localStorage`
+`funforge_unlocked`. Unlocking once unlocks every page until it's locked again.
 Pages must not keep their own parent-mode flag — subscribe with `KidLock.onChange`
 and gate actions with `KidLock.require(fn)`. PIN comes from `PARENT_PIN` (default
 `1234`), injected by `base.html`; it is a toddler lock, not a security boundary.

@@ -1,4 +1,4 @@
-# Multi-stage build for KidMedia
+# Multi-stage build for FunForge
 FROM python:3.11-slim as base
 
 # Set environment variables
@@ -40,7 +40,7 @@ RUN mkdir -p /app/data /app/logs
 EXPOSE 8006
 
 # Command for development
-CMD ["python", "-m", "uvicorn", "kid_media.main:app", "--host", "0.0.0.0", "--port", "8006", "--reload"]
+CMD ["python", "-m", "uvicorn", "fun_forge.main:app", "--host", "0.0.0.0", "--port", "8006", "--reload"]
 
 # Production stage
 FROM base as production
@@ -52,13 +52,13 @@ COPY . .
 RUN mkdir -p /app/data /app/logs
 
 # Create non-root user
-RUN useradd --create-home --shell /bin/bash kidmedia
-RUN chown -R kidmedia:kidmedia /app
-USER kidmedia
+RUN useradd --create-home --shell /bin/bash funforge
+RUN chown -R funforge:funforge /app
+USER funforge
 
 # Expose port
 EXPOSE 8006
 
 # Command for production
-CMD ["python", "-m", "uvicorn", "kid_media.main:app", "--host", "0.0.0.0", "--port", "8006"]
+CMD ["python", "-m", "uvicorn", "fun_forge.main:app", "--host", "0.0.0.0", "--port", "8006"]
 
