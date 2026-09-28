@@ -254,11 +254,23 @@ def run(page, errors):
     section("Home page")
     go("/")
     tiles = [el.strip() for el in page.locator(".home-tile-text").all_inner_texts()]
-    assert tiles == ["Songs", "Stories", "Videos"], f"home tiles are {tiles}"
+    assert tiles == ["Songs", "Stories", "Videos", "Games"], f"home tiles are {tiles}"
     assert page.locator(".stats-grid").count() == 0, "the library-stats grid is still there"
     assert page.evaluate("document.body.scrollHeight - innerHeight") <= 0, \
-        "home page scrolls — the three doors should fit on one screen"
-    ok("home is three tiles (Songs / Stories / Videos) that fit without scrolling")
+        "home page scrolls — the four doors should fit on one screen"
+    # The 2x2 grid must sit centred in what the header leaves. A desktop rule for
+    # the queue sidebar used to push .main-content 320px right on every page,
+    # including this one, which has no sidebar at all.
+    off = page.evaluate("""() => {
+        const g = document.querySelector('.home').getBoundingClientRect();
+        return Math.abs((g.left + g.right) / 2 - innerWidth / 2);
+    }""")
+    assert off <= 2, f"home grid is off-centre by {off}px"
+    ok("home is four tiles (Songs / Stories / Videos / Games), centred, no scrolling")
+
+    go("/games/")
+    assert page.locator(".page-title").inner_text().strip() == "Games", "the Games door opens onto nothing"
+    ok("the Games tile opens the Games page")
 
     # ---- player card --------------------------------------------------------
     section("Player card")

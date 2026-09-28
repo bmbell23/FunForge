@@ -103,9 +103,14 @@ under the middle of a card turns "show me what's in here" into "play the lot".
 ### Screen names
 
 The kid-facing names are **Songs** (`/music/`), **Stories** (`/podcasts/` —
-podcasts and audiobooks) and **Videos** (`/videos/`). URLs and model names still
-say "podcast"; only the copy says Stories. The home page is those three tiles and
-nothing else — no stats, no counts.
+podcasts and audiobooks), **Videos** (`/videos/`) and **Games** (`/games/`). URLs
+and model names still say "podcast"; only the copy says Stories. The home page is
+those four tiles and nothing else — no stats, no counts.
+
+The tiles are a 2x2 grid that does **not** reflow between phone and desktop, and
+the order is fixed. A kid who can't read navigates by position, so Songs must stay
+top-left on every screen it ever renders on. Adding a fifth screen means rethinking
+the shape, not appending a tile.
 
 ### Keeping playback alive across the UI
 

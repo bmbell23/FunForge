@@ -949,7 +949,11 @@ body:has(.music-main) .header { display: none; }
     .queue-overlay { display: none !important; }
     .queue-hamburger { display: none; }
 
-    .main-content {
+    /* Only pages that actually carry a queue sidebar get pushed aside for it.
+       This used to be an unscoped `.main-content { margin-left: 320px }`, which
+       shoved the home page 320px to the right against an empty gutter -- the
+       sidebar it was making room for isn't on that page at all. */
+    body:has(.queue-sidebar) .main-content {
         margin-left: 320px;
     }
 
@@ -1593,29 +1597,49 @@ body.kid-unlocked::before {
 }
 
 /* ============ HOME ============ */
-/* Three doors — Songs, Stories, Videos — and nothing else on the page. They
-   stack full-width on a phone and sit side by side once there's room. */
+/* Four doors -- Songs, Stories, Videos, Games -- in a 2x2 grid and nothing else
+   on the page. The same 2x2 at every size on purpose: a three-year-old learns
+   where Songs lives by position, and a layout that reflows between phone and
+   tablet throws that away. Three tiles used to stack full-width with the icon
+   and label shoved against the left edge, which read as an accident. */
 .home {
     display: grid;
-    grid-template-columns: 1fr;
-    gap: 16px;
-    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
-    max-width: 1100px;
-    margin: 0 auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: clamp(12px, 3vw, 24px);
+    padding: clamp(12px, 3vw, 24px);
+    padding-bottom: calc(clamp(12px, 3vw, 24px) + env(safe-area-inset-bottom));
+    /* Grow into whatever the header leaves, then stop: tiles should fill a phone
+       screen without becoming billboards on a desktop monitor. The centring is
+       done by .main-content below, which owns the leftover space. */
+    flex: 1;
+    width: 100%;
+    max-width: 880px;
+    max-height: 760px;
+}
+
+/* The home page is the one screen whose content is centred in the viewport
+   rather than flowing from the top, so it gets its own shell rules. */
+body:has(.home) .main-content {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
 
 .home-tile {
     text-decoration: none;
     color: #fff;
-    border-radius: 28px;
-    /* Tall enough that a small child can't miss it, short enough that all three
-       fit on a phone screen without scrolling. */
-    min-height: clamp(120px, 26vh, 220px);
+    border-radius: clamp(20px, 5vw, 32px);
+    /* Icon above label, both centred -- in the middle of the tile at every size. */
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: flex-start;
-    gap: 22px;
-    padding: 0 32px;
+    justify-content: center;
+    text-align: center;
+    gap: clamp(4px, 1.4vh, 14px);
+    padding: 10px;
+    min-height: 96px;
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
     transition: transform 0.15s ease, box-shadow 0.15s ease;
     position: relative;
@@ -1641,33 +1665,21 @@ body.kid-unlocked::before {
 .home-tile-songs   { background: linear-gradient(135deg, #7C4DFF 0%, #B388FF 100%); }
 .home-tile-stories { background: linear-gradient(135deg, #FF7043 0%, #FFB74D 100%); }
 .home-tile-videos  { background: linear-gradient(135deg, #26C6DA 0%, #4DD0E1 100%); }
+.home-tile-games   { background: linear-gradient(135deg, #43A047 0%, #9CCC65 100%); }
 
+/* vmin rather than vw so the icon and label stay in proportion to the tile in
+   both portrait and landscape -- a 2x2 cell scales with the shorter edge. */
 .home-tile-icon {
-    font-size: clamp(44px, 9vw, 72px);
+    font-size: clamp(38px, 11vmin, 84px);
     line-height: 1;
     filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.22));
 }
 .home-tile-text {
-    font-size: clamp(34px, 7vw, 56px);
+    font-size: clamp(22px, 5.5vmin, 44px);
     font-weight: 900;
-    line-height: 1;
+    line-height: 1.05;
     letter-spacing: -0.5px;
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-}
-
-@media (min-width: 760px) {
-    .home {
-        grid-template-columns: repeat(3, 1fr);
-        gap: 24px;
-        padding: 40px 24px;
-    }
-    .home-tile {
-        flex-direction: column;
-        justify-content: center;
-        gap: 16px;
-        padding: 32px 20px;
-        min-height: 260px;
-    }
 }
 
 /* ============ PAGE SHELL ============ */

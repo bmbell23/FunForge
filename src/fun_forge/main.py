@@ -16,7 +16,7 @@ from .config import settings
 from .database import engine, Base, get_db
 from .templating import templates
 from .routes import music, admin
-from .routes import podcasts, videos
+from .routes import podcasts, videos, games
 from .services.scanner import MusicScanner
 from .services.podcast_scanner import PodcastScanner
 
@@ -159,11 +159,12 @@ app.include_router(music.router, tags=["music"])
 app.include_router(admin.router, tags=["admin"])
 app.include_router(podcasts.router, tags=["podcasts"])
 app.include_router(videos.router, tags=["videos"])
+app.include_router(games.router, tags=["games"])
 
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    """Home page — three big buttons: Songs, Stories, Videos.
+    """Home page — four big buttons: Songs, Stories, Videos, Games.
 
     No longer counts rows: the home page used to show a library-statistics grid,
     which meant five COUNT(*) queries on every load of a page a toddler taps
