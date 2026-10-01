@@ -1,0 +1,317 @@
+{% extends "games/_shell.html" %}
+
+{% block game %}
+{# Big bubbles drift up the screen; tap one and it pops with a bloop. Tap empty
+   space and a little bubble appears under the finger. There is no score, no
+   goal and nothing to miss: a bubble that floats off the top is simply gone, and
+   a new one is already on its way up from the bottom. #}
+<div id="bubStage" class="bub-stage" data-bubbles="0" data-pops="0" data-spawned="0" aria-label="Bubbles"></div>
+{% endblock %}
+
+{% block game_js %}
+<script>
+(function () {
+    'use strict';
+
+    var stage = document.getElementById('bubStage');
+
+    var MIN_ON_SCREEN = 6;      // below this a new bubble is sent up at once
+    var TARGET = 8;             // below this one is sent up every second or so
+    var MAX_ON_SCREEN = 14;     // finger-made bubbles can pile up; the oldest quietly goes
+    var MIN_D = 60;             // diameters of the bubbles that rise from the bottom
+    var MAX_D = 140;
+    var EMOJI = ['🐟', '🐥', '⭐', '🦋', '🐢', '🐞', '🐙', '🐳', '🌸', '🌈'];
+
+    var bubbles = [];           // bottom-most layer first, same order as the DOM
+    var seq = 0;
+    var pops = 0;
+    var spawned = 0;
+    var width = 0;
+    var height = 0;
+    var nextSpawn = 0;          // seconds of play until the next bubble may rise
+    var clock = 0;
+    var raf = 0;
+    var last = 0;
+    var running = false;
+    var particles = 0;
+
+    function rand(a, b) { return a + Math.random() * (b - a); }
+    function pickOne(list) { return list[Math.floor(Math.random() * list.length)]; }
+
+    // ---- sound ----------------------------------------------------------
+    // Synthesised, like the other games: no audio files, and nothing to share
+    // focus with because arriving here already destroyed the player's <audio>.
+    // Every note is from one pentatonic scale, so taps at random still sound
+    // like a tune. Bigger bubble, lower note.
+
+    var NOTES = (function () {
+        var steps = [0, 2, 4, 7, 9], list = [];
+        for (var oct = 0; oct < 3; oct++) {
+            steps.forEach(function (s) { list.push(261.63 * Math.pow(2, (12 * oct + s) / 12)); });
+        }
+        return list;                // C4 .. A6
+    })();
+
+    function noteFor(d) {
+        var t = Math.max(0, Math.min(1, (d - MIN_D) / (MAX_D - MIN_D)));
+        var i = Math.round((1 - t) * (NOTES.length - 1)) + pickOne([-1, 0, 0, 1]);
+        return NOTES[Math.max(0, Math.min(NOTES.length - 1, i))];
+    }
+
+    var audio = (function () {
+        var ctx = null;
+        function context() {
+            if (ctx) return ctx;
+            var Ctor = window.AudioContext || window.webkitAudioContext;
+            if (!Ctor) return null;
+            try { ctx = new Ctor(); } catch (e) { return null; }
+            return ctx;
+        }
+        function tone(type, f0, f1, f2, dur, vol) {
+            var c = context();
+            if (!c) return;
+            if (c.state === 'suspended') { try { c.resume(); } catch (e) { return; } }
+            try {
+                var osc = c.createOscillator();
+                var gain = c.createGain();
+                var t0 = c.currentTime;
+                osc.type = type;
+                osc.frequency.setValueAtTime(f0, t0);
+                osc.frequency.exponentialRampToValueAtTime(f1, t0 + dur * 0.25);
+                osc.frequency.exponentialRampToValueAtTime(f2, t0 + dur);
+                gain.gain.setValueAtTime(0.0001, t0);
+                gain.gain.linearRampToValueAtTime(vol, t0 + 0.012);
+                gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+                osc.connect(gain);
+                gain.connect(c.destination);
+                osc.start(t0);
+                osc.stop(t0 + dur + 0.03);
+            } catch (e) { /* audio is a nicety, never a failure */ }
+        }
+        return {
+            // A bloop: the pitch swoops up into the note and settles.
+            bloop: function (freq) {
+                tone('sine', freq * 0.7, freq * 1.2, freq, 0.3, 0.16);
+                tone('triangle', freq * 1.4, freq * 2.4, freq * 2, 0.16, 0.04);
+            },
+            pip:   function () { tone('sine', 880, 1100, 1320, 0.1, 0.06); },
+            hush:  function () { if (ctx) { try { ctx.suspend(); } catch (e) {} } },
+            wake:  function () { if (ctx && ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} } }
+        };
+    })();
+
+    // ---- layout ---------------------------------------------------------
+
+    function measure() {
+        width = stage.clientWidth;
+        height = stage.clientHeight;
+    }
+
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+
+    // ---- bubbles --------------------------------------------------------
+
+    function place(b) {
+        var x = b.x + Math.sin(b.t * b.freq + b.phase) * b.amp - b.r;
+        b.el.style.transform = 'translate3d(' + x.toFixed(1) + 'px,' + (b.y - b.r).toFixed(1) + 'px,0)';
+    }
+
+    function add(d, x, y, kind) {
+        var el = document.createElement('div');
+        var body = document.createElement('div');
+        var hue = Math.floor(rand(0, 360));
+        el.className = 'bub-bubble';
+        el.dataset.id = ++seq;
+        el.dataset.kind = kind;
+        el.style.width = el.style.height = d + 'px';
+        el.style.setProperty('--bub-hue', hue);
+        body.className = 'bub-body';
+        if (Math.random() < 0.55) {
+            var face = document.createElement('span');
+            face.className = 'bub-emoji';
+            face.textContent = pickOne(EMOJI);
+            face.style.fontSize = Math.round(d * 0.5) + 'px';
+            body.appendChild(face);
+        }
+        el.appendChild(body);
+        var b = {
+            el: el, d: d, r: d / 2, x: x, y: y, hue: hue,
+            vy: rand(28, 60),                   // px per second, upwards
+            amp: rand(6, 22), freq: rand(0.6, 1.5), phase: rand(0, 6.28), t: 0
+        };
+        bubbles.push(b);
+        stage.appendChild(el);
+        place(b);
+        spawned++;
+        stage.dataset.spawned = spawned;
+        sync();
+        return b;
+    }
+
+    function sync() { stage.dataset.bubbles = bubbles.length; }
+
+    function drop(b) {
+        var i = bubbles.indexOf(b);
+        if (i >= 0) bubbles.splice(i, 1);
+        if (b.el.parentNode) b.el.parentNode.removeChild(b.el);
+        sync();
+    }
+
+    /* A new bubble from just under the bottom edge. */
+    function rise() {
+        var d = Math.round(rand(MIN_D, MAX_D));
+        var margin = d / 2 + 24;
+        add(d, rand(margin, Math.max(margin, width - margin)), height + d / 2 + 4, 'wander');
+    }
+
+    /* The opening scene: a screenful already in the water. */
+    function populate() {
+        for (var i = 0; i < TARGET - 1; i++) {
+            var d = Math.round(rand(MIN_D, MAX_D));
+            var margin = d / 2 + 24;
+            add(d, rand(margin, Math.max(margin, width - margin)),
+                rand(height * 0.12, height - d / 2), 'wander');
+        }
+    }
+
+    function burst(x, y, d, hue) {
+        var bits = Math.min(12, Math.max(0, 160 - particles) >> 1);
+        var ring = document.createElement('div');
+        ring.className = 'bub-ring';
+        ring.style.left = x + 'px';
+        ring.style.top = y + 'px';
+        ring.style.width = ring.style.height = d + 'px';
+        ring.style.setProperty('--bub-hue', hue);
+        stage.appendChild(ring);
+        gone(ring, ring.animate ? ring.animate(
+            [{ transform: 'translate(-50%,-50%) scale(0.8)', opacity: 0.9 },
+             { transform: 'translate(-50%,-50%) scale(1.5)', opacity: 0 }],
+            { duration: 320, easing: 'ease-out' }) : null, 340);
+
+        for (var i = 0; i < bits; i++) {
+            var p = document.createElement('div');
+            var s = Math.round(rand(8, 18));
+            var a = (i / bits) * 6.283 + rand(-0.3, 0.3);
+            var far = rand(d * 0.6, d * 1.3);
+            p.className = 'bub-bit';
+            p.style.left = x + 'px';
+            p.style.top = y + 'px';
+            p.style.width = p.style.height = s + 'px';
+            p.style.setProperty('--bub-hue', (hue + Math.floor(rand(-50, 50)) + 360) % 360);
+            stage.appendChild(p);
+            particles++;
+            gone(p, p.animate ? p.animate(
+                [{ transform: 'translate(-50%,-50%) scale(1)', opacity: 1 },
+                 { transform: 'translate(calc(-50% + ' + (Math.cos(a) * far).toFixed(0) + 'px),calc(-50% + ' +
+                              (Math.sin(a) * far + 14).toFixed(0) + 'px)) scale(0.2)', opacity: 0 }],
+                { duration: Math.round(rand(380, 620)), easing: 'cubic-bezier(.2,.7,.4,1)' }) : null, 640, true);
+        }
+    }
+
+    /* Remove a one-shot effect when its animation ends (or after a timeout where
+       the Web Animations API is missing). */
+    function gone(el, anim, ms, isBit) {
+        var done = false;
+        function finish() {
+            if (done) return;
+            done = true;
+            if (isBit) particles--;
+            if (el.parentNode) el.parentNode.removeChild(el);
+        }
+        if (anim) anim.onfinish = finish;
+        setTimeout(finish, ms + 200);
+    }
+
+    function pop(b, quiet) {
+        drop(b);
+        burst(b.x + Math.sin(b.t * b.freq + b.phase) * b.amp, b.y, b.d, b.hue);
+        if (!quiet) {
+            audio.bloop(noteFor(b.d));
+            pops++;
+            stage.dataset.pops = pops;
+        }
+    }
+
+    /* The bubble under a finger, if any. The hit area is a little fatter than the
+       bubble: small hands are not precise, and a near miss that spawns a new
+       bubble instead of popping the one aimed at feels like a broken toy. */
+    function pick(x, y) {
+        var best = null, bestScore = 1;
+        for (var i = bubbles.length - 1; i >= 0; i--) {
+            var b = bubbles[i];
+            var dx = x - (b.x + Math.sin(b.t * b.freq + b.phase) * b.amp);
+            var dy = y - b.y;
+            var score = Math.sqrt(dx * dx + dy * dy) / (b.r + 10);
+            if (score < bestScore) { best = b; bestScore = score; }
+        }
+        return best;
+    }
+
+    // ---- input ----------------------------------------------------------
+    // Pointer events, one per finger: a toddler mashes with a whole hand, and
+    // click would only ever see the last of them.
+
+    stage.addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        audio.wake();
+        var rect = stage.getBoundingClientRect();
+        var x = e.clientX - rect.left;
+        var y = e.clientY - rect.top;
+        var hit = pick(x, y);
+        if (hit) { pop(hit); return; }
+        add(Math.round(rand(44, 64)), x, y, 'finger');
+        audio.pip();
+        while (bubbles.length > MAX_ON_SCREEN) pop(bubbles[0], true);
+    });
+    stage.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+    // ---- loop -----------------------------------------------------------
+
+    function frame(now) {
+        raf = requestAnimationFrame(frame);
+        var dt = Math.min(0.05, (now - last) / 1000);
+        last = now;
+        clock += dt;
+
+        for (var i = bubbles.length - 1; i >= 0; i--) {
+            var b = bubbles[i];
+            b.t += dt;
+            b.y -= b.vy * dt;
+            if (b.y < -b.r - 4) { drop(b); continue; }     // floated off the top
+            place(b);
+        }
+
+        if (bubbles.length < MIN_ON_SCREEN) {
+            rise();
+        } else if (bubbles.length < TARGET && clock >= nextSpawn) {
+            rise();
+            nextSpawn = clock + rand(0.6, 1.4);
+        }
+    }
+
+    function start() {
+        if (running) return;
+        running = true;
+        last = performance.now();
+        raf = requestAnimationFrame(frame);
+    }
+
+    function stop() {
+        running = false;
+        cancelAnimationFrame(raf);
+    }
+
+    // ---- shell hooks ----------------------------------------------------
+
+    if (window.FunForgeGame) {
+        window.FunForgeGame.onPause(function () { stop(); audio.hush(); });
+        window.FunForgeGame.onResume(function () { start(); audio.wake(); });
+    }
+
+    measure();
+    populate();
+    start();
+})();
+</script>
+{% endblock %}

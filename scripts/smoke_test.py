@@ -626,6 +626,213 @@ def run(page, errors):
     assert not errors, "JS errors in Spell It: " + "; ".join(errors)
     ok("no JS errors while playing")
 
+    # ---- bubble pop ----------------------------------------------------------
+    section("Bubble Pop (every tap pops something, nothing can go wrong)")
+    go("/games/")
+    assert page.locator(".game-card-bub").count() == 1, "the picker has no Bubbles tile"
+    assert "Bubbles" in page.locator(".game-card-bub").inner_text(), "Bubbles tile is mislabelled"
+    r = page.locator(".game-card-bub").bounding_box()
+    assert r["width"] >= 80 and r["height"] >= 80, f"the Bubbles tile is too small to hit: {r}"
+    ok("the picker shows the Bubbles tile")
+
+    page.click(".game-card-bub")
+    page.wait_for_selector("#bubStage")
+    page.wait_for_timeout(700)
+    assert "/games/bubbles/" in page.url, f"tile went to {page.url}"
+    assert page.evaluate("getComputedStyle(document.querySelector('.header')).display") == "none", \
+        "the shared header is visible inside Bubble Pop"
+    n = page.locator(".bub-bubble").count()
+    assert 6 <= n <= 10, f"{n} bubbles on screen at the start, want roughly 6-10"
+    sizes = page.eval_on_selector_all(
+        ".bub-bubble[data-kind=wander]", "els => els.map(e => e.getBoundingClientRect().width)")
+    assert sizes and all(59 <= s <= 141 for s in sizes), f"bubble sizes outside 60-140px: {sizes}"
+    assert page.evaluate("document.body.scrollHeight - innerHeight") <= 0, "Bubble Pop scrolls"
+    ok(f"the page loads with {n} bubbles, 60-140px, and no scrolling")
+
+    for _ in range(4):
+        page.go_back()
+        page.wait_for_timeout(250)
+    assert "/games/bubbles/" in page.url, f"Back escaped Bubble Pop — now at {page.url}"
+    ok("Back can't leave Bubble Pop either")
+
+    def stage_num(attr):
+        return int(page.evaluate(f"document.getElementById('bubStage').dataset.{attr}"))
+
+    # Pick a bubble whose centre is on screen and outside every other bubble's
+    # (fattened) hit area, so the tap can only mean that bubble.
+    target = page.evaluate("""() => {
+        const st = document.getElementById('bubStage').getBoundingClientRect();
+        const all = [...document.querySelectorAll('.bub-bubble')].map(e => {
+            const r = e.getBoundingClientRect();
+            return { id: e.dataset.id, x: r.left + r.width / 2, y: r.top + r.height / 2, r: r.width / 2 };
+        });
+        return all.find(b =>
+            b.x > st.left + 10 && b.x < st.right - 10 && b.y > st.top + 10 && b.y < st.bottom - 10 &&
+            all.every(o => o.id === b.id || Math.hypot(o.x - b.x, o.y - b.y) > o.r + 14)) || null;
+    }""")
+    assert target, "no clear bubble to tap"
+    pops_before, spawned_before = stage_num("pops"), stage_num("spawned")
+    page.mouse.click(target["x"], target["y"])
+    page.wait_for_timeout(100)
+    assert page.locator(f".bub-bubble[data-id='{target['id']}']").count() == 0, "the tapped bubble is still there"
+    assert stage_num("pops") == pops_before + 1, "the pop was not counted"
+    assert page.locator(".bub-bit").count() > 0, "no burst of particles when it popped"
+    ok("tapping a bubble pops it, with a burst")
+
+    page.wait_for_function(
+        f"+document.getElementById('bubStage').dataset.spawned > {spawned_before}", timeout=6000)
+    page.wait_for_function("document.querySelectorAll('.bub-bubble').length >= 6", timeout=6000)
+    ok("new bubbles keep rising after one pops")
+
+    # Empty space grows a small bubble under the finger.
+    spot = page.evaluate("""() => {
+        const st = document.getElementById('bubStage').getBoundingClientRect();
+        const bs = [...document.querySelectorAll('.bub-bubble')].map(e => e.getBoundingClientRect());
+        for (let i = 0; i < 400; i++) {
+            const x = st.left + 40 + Math.random() * (st.width - 80);
+            const y = st.top + 40 + Math.random() * (st.height - 80);
+            if (bs.every(r => Math.hypot(x - (r.left + r.width / 2), y - (r.top + r.height / 2)) > r.width / 2 + 40))
+                return { x, y };
+        }
+        return null;
+    }""")
+    assert spot, "no empty space to tap"
+    before = page.locator(".bub-bubble[data-kind=finger]").count()
+    page.mouse.click(spot["x"], spot["y"])
+    page.wait_for_timeout(100)
+    assert page.locator(".bub-bubble[data-kind=finger]").count() == before + 1, \
+        "tapping empty space did not make a bubble"
+    ok("tapping empty space makes a small bubble under the finger")
+
+    # Several fingers at once: three simultaneous pointers, each with its own id.
+    pops_before = stage_num("pops")
+    page.evaluate("""() => {
+        const st = document.getElementById('bubStage');
+        const bs = [...document.querySelectorAll('.bub-bubble')].slice(0, 3).map(e => e.getBoundingClientRect());
+        bs.forEach((r, i) => st.dispatchEvent(new PointerEvent('pointerdown', {
+            pointerId: 20 + i, pointerType: 'touch', isPrimary: i === 0, bubbles: true, cancelable: true,
+            clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 })));
+    }""")
+    assert stage_num("pops") - pops_before >= 2, "simultaneous touches were not all handled"
+    ok("several fingers at once each pop their own bubble")
+
+    st_box = page.locator("#bubStage").bounding_box()
+    for _ in range(50):
+        import random as _random
+        page.mouse.click(st_box["x"] + _random.uniform(2, st_box["width"] - 2),
+                         st_box["y"] + _random.uniform(2, st_box["height"] - 2))
+    page.wait_for_timeout(500)
+    n = page.locator(".bub-bubble").count()
+    assert 1 <= n <= 14, f"{n} bubbles after the mashing — should stay tidy"
+    assert "/games/bubbles/" in page.url, "mashing left the game"
+    assert not errors, "JS errors in Bubble Pop: " + "; ".join(errors)
+    ok("50 rapid taps at random spots: no JS errors, still a tidy screenful")
+
+    # ---- animal sounds -------------------------------------------------------
+    section("Animal Sounds (six huge buttons, each one answers)")
+    original_size = page.viewport_size
+    page.set_viewport_size({"width": 412, "height": 860})
+    go("/games/")
+    assert page.locator(".game-card-ani").count() == 1, "the picker has no Animals tile"
+    assert "Animals" in page.locator(".game-card-ani").inner_text(), "Animals tile is mislabelled"
+    # With six or so tiles the picker may scroll on a phone; that is fine, but
+    # the tiles and their text must not shrink to fit.
+    for sel in (".game-card-bub", ".game-card-ani"):
+        r = page.locator(sel).bounding_box()
+        assert r["width"] >= 80 and r["height"] >= 80, f"{sel} is too small to hit: {r}"
+    fs = page.evaluate("parseFloat(getComputedStyle(document.querySelector('.game-card-ani .game-card-text')).fontSize)")
+    assert fs >= 24, f"picker text is {fs}px"
+    ok("the picker shows the Animals tile")
+
+    page.click(".game-card-ani")
+    page.wait_for_selector(".ani-tile")
+    page.wait_for_timeout(500)
+    assert "/games/animals/" in page.url, f"tile went to {page.url}"
+    assert page.evaluate("getComputedStyle(document.querySelector('.header')).display") == "none", \
+        "the shared header is visible inside Animal Sounds"
+    assert page.locator(".ani-tile").count() == 6, "Animal Sounds should have six animals"
+    ok("the page loads on six animals")
+
+    for _ in range(4):
+        page.go_back()
+        page.wait_for_timeout(250)
+    assert "/games/animals/" in page.url, f"Back escaped Animal Sounds — now at {page.url}"
+    ok("Back can't leave Animal Sounds either")
+
+    def check_fit(label):
+        dims = page.evaluate("""() => {
+            const rs = [...document.querySelectorAll('.ani-tile')].map(t => t.getBoundingClientRect());
+            return {
+                small: Math.min(...rs.map(r => Math.min(r.width, r.height))),
+                skew: Math.max(...rs.map(r => Math.abs(r.width - r.height))),
+                inside: rs.every(r => r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight),
+                over: document.documentElement.scrollHeight - innerHeight,
+                overX: document.documentElement.scrollWidth - innerWidth,
+            };
+        }""")
+        assert dims["small"] >= 120, f"{label}: tiles are only {dims['small']}px — too small for small hands"
+        assert dims["skew"] <= 2, f"{label}: tiles are {dims['skew']}px off square"
+        assert dims["inside"], f"{label}: a tile hangs off the screen"
+        assert dims["over"] <= 0 and dims["overX"] <= 0, f"{label}: the page scrolls ({dims})"
+
+    check_fit("412x860")
+    for w, h in [(393, 727), (1280, 800), (860, 412)]:
+        page.set_viewport_size({"width": w, "height": h})
+        page.wait_for_timeout(300)
+        check_fit(f"{w}x{h}")
+    page.set_viewport_size({"width": 412, "height": 860})
+    page.wait_for_timeout(300)
+    ok("tiles are 120px+, square, and fit with no scrolling on phone and desktop sizes")
+
+    # Spy on speech: the animals must not talk (a robotic TTS voice over the noises, #18).
+    has_speech = page.evaluate("""() => {
+        if (!('speechSynthesis' in window)) return false;
+        window.__spoken = []; window.__cancels = 0;
+        const speak = speechSynthesis.speak.bind(speechSynthesis);
+        const cancel = speechSynthesis.cancel.bind(speechSynthesis);
+        speechSynthesis.speak = u => { window.__spoken.push(u.text); };
+        speechSynthesis.cancel = () => { window.__cancels++; cancel(); };
+        return true;
+    }""")
+
+    expected = {"cow": "Moo!", "dog": "Woof woof!", "cat": "Meow!",
+                "pig": "Oink oink!", "duck": "Quack quack!", "lion": "Roar!"}
+    for animal in expected:
+        tile = page.locator(f".ani-tile[data-animal={animal}]")
+        assert tile.get_attribute("data-anim") is None, f"{animal} starts out mid-animation"
+        box = tile.bounding_box()
+        page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        assert tile.get_attribute("data-anim") == "on", f"tapping the {animal} did not animate it"
+        assert page.evaluate("document.getElementById('aniBoard').dataset.last") == animal, \
+            f"the board does not know the {animal} was tapped"
+    assert page.evaluate("document.getElementById('aniBoard').dataset.taps") == "6", "taps were not counted"
+    page.wait_for_function("document.querySelectorAll('.ani-tile[data-anim]').length === 0", timeout=3000)
+    ok("tapping each animal sets it bouncing, and it settles again")
+
+    if has_speech:
+        assert page.evaluate("window.__spoken") == [], "an animal spoke with the TTS voice"
+        ok("the animals make their noises without a TTS voice on top")
+
+    # Mashing: all six at once through separate pointers, then 60 more in a burst.
+    taps_before = int(page.evaluate("document.getElementById('aniBoard').dataset.taps"))
+    page.evaluate("""() => {
+        [...document.querySelectorAll('.ani-tile')].forEach((t, i) => {
+            const r = t.getBoundingClientRect();
+            t.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 30 + i, pointerType: 'touch',
+                bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+        });
+    }""")
+    assert page.locator(".ani-tile[data-anim=on]").count() == 6, "simultaneous touches did not all animate"
+    for i in range(60):
+        page.locator(".ani-tile").nth(i % 6).dispatch_event("pointerdown")
+    taps_now = int(page.evaluate("document.getElementById('aniBoard').dataset.taps"))
+    assert taps_now == taps_before + 66, f"mashing dropped taps: {taps_before} -> {taps_now}"
+    assert "/games/animals/" in page.url, "mashing left the game"
+    assert not errors, "JS errors in Animal Sounds: " + "; ".join(errors)
+    ok("six fingers at once and a mashing burst: every tap counted, no JS errors")
+
+    page.set_viewport_size(original_size)
+
     # ---- player card --------------------------------------------------------
     section("Player card")
     page.evaluate("localStorage.setItem('funforge_unlocked','true')")
