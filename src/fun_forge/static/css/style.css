@@ -1895,6 +1895,7 @@ body {
 }
 .game-card-match { background: linear-gradient(135deg, #43A047 0%, #9CCC65 100%); }
 .game-card-ttt { background: linear-gradient(135deg, #FF7043 0%, #FFCA28 100%); }
+.game-card-spell { background: linear-gradient(135deg, #5C6BC0 0%, #26C6DA 100%); }
 
 .game-card-icon {
     font-size: clamp(48px, 12vmin, 88px);
@@ -2203,6 +2204,198 @@ body:has(.game-shell) .header { display: none; }
 }
 @keyframes ttt-fall {
     to { transform: translateY(125vh) rotate(360deg); }
+}
+
+/* ---- spell it ---- */
+.spell-stage {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px;
+    gap: clamp(8px, 1.6vh, 16px);
+}
+
+/* The picture takes whatever height the slots, garden and tiles leave over. */
+.spell-picture-wrap {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.spell-picture {
+    font-size: min(52vw, 26vh, 260px);
+    line-height: 1;
+    filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.3));
+}
+.spell-picture-pop { animation: spell-pop 0.4s ease-out; }
+
+/* In the corner of the picture, never the middle of it. */
+.spell-hear {
+    position: absolute;
+    top: 0;
+    right: 4px;
+    width: 80px;
+    height: 80px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    font-size: 40px;
+    line-height: 1;
+    cursor: pointer;
+}
+.spell-hear:active { background: rgba(255, 255, 255, 0.4); transform: scale(0.95); }
+
+/* --spell-slot is measured in JS so five letters still fit a narrow phone. */
+.spell-slots {
+    flex: 0 0 auto;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+}
+.spell-slot {
+    width: var(--spell-slot, 80px);
+    height: calc(var(--spell-slot, 80px) * 1.15);
+    border-radius: 18px;
+    border: 4px dashed rgba(255, 255, 255, 0.45);
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--spell-slot, 80px) * 0.7);
+    font-weight: 900;
+    line-height: 1;
+}
+.spell-slot-next {
+    border-color: #FFD54F;
+    background: rgba(255, 213, 79, 0.25);
+    animation: spell-pulse 0.9s ease-in-out infinite alternate;
+}
+.spell-slot-filled {
+    border: 4px solid #fff;
+    background: linear-gradient(135deg, #7C4DFF 0%, #B388FF 100%);
+    /* Hold the letter back while its flying copy arrives. */
+    animation: spell-land 0.3s ease-out 0.25s both;
+}
+.spell-slot-win {
+    background: #FFF176;
+    border-color: #FFF176;
+    color: #4A2C00;
+    animation: ttt-bounce 0.45s ease infinite alternate;
+}
+
+/* The garden: one flower per right letter, and it only ever fills up. */
+.spell-garden {
+    flex: 0 0 auto;
+    width: 100%;
+    display: flex;
+    justify-content: space-around;
+    align-items: flex-end;
+    padding: 4px 8px;
+    border-radius: 18px;
+    background: linear-gradient(to top, rgba(76, 175, 80, 0.55) 0 22%, rgba(255, 255, 255, 0.08) 22%);
+    font-size: clamp(28px, 8vw, 40px);
+    line-height: 1.2;
+}
+.spell-spot { display: block; transform-origin: 50% 100%; }
+.spell-spot:not(.spell-spot-bloom) { opacity: 0.35; font-size: 0.6em; }
+.spell-spot-bloom { animation: spell-grow 0.6s ease-out; }
+
+/* Wrapping flex rather than a grid, so a short last row sits in the middle. */
+.spell-tiles {
+    --spell-gap: clamp(8px, 1.6vh, 14px);
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: 520px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--spell-gap);
+    padding-bottom: 4px;
+}
+.spell-tiles[data-cols="3"] { max-width: 400px; }
+.spell-tile {
+    flex: 0 0 calc((100% - var(--spell-gap) * 3) / 4);
+    border: none;
+    border-radius: 22px;
+    min-width: 80px;
+    min-height: 80px;
+    height: clamp(80px, 11vh, 104px);
+    background: linear-gradient(135deg, #FF7043 0%, #FFCA28 100%);
+    color: #fff;
+    font-size: 48px;
+    font-weight: 900;
+    line-height: 1;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+.spell-tiles[data-cols="3"] .spell-tile { flex-basis: calc((100% - var(--spell-gap) * 2) / 3); }
+.spell-tile:active { transform: scale(0.94); }
+.spell-tile-wiggle { animation: spell-wiggle 0.4s ease; }
+
+/* Fixed to the viewport so the letter can fly from tile to slot. */
+.spell-flyer {
+    position: fixed;
+    z-index: 40;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 22px;
+    background: linear-gradient(135deg, #FF7043 0%, #FFCA28 100%);
+    color: #fff;
+    font-size: 48px;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.spell-confetti {
+    position: absolute;
+    inset: 0;
+    z-index: 12;
+    overflow: hidden;
+    pointer-events: none;
+}
+.spell-bit {
+    position: absolute;
+    top: -12%;
+    font-size: clamp(28px, 7vmin, 52px);
+    animation: ttt-fall 2.2s linear forwards;
+}
+
+@keyframes spell-pop {
+    0%   { transform: scale(0.3); }
+    70%  { transform: scale(1.12); }
+    100% { transform: scale(1); }
+}
+@keyframes spell-pulse {
+    from { transform: scale(1); }
+    to   { transform: scale(1.06); }
+}
+@keyframes spell-land {
+    0%   { color: transparent; transform: scale(1); }
+    60%  { color: #fff; transform: scale(1.15); }
+    100% { color: #fff; transform: scale(1); }
+}
+@keyframes spell-grow {
+    0%   { transform: scale(0.1); }
+    70%  { transform: scale(1.35); }
+    100% { transform: scale(1); }
+}
+@keyframes spell-wiggle {
+    0%, 100% { transform: rotate(0); }
+    20% { transform: rotate(-7deg); }
+    50% { transform: rotate(6deg); }
+    80% { transform: rotate(-3deg); }
 }
 
 /* ---- family photo approval (parent screen) ---- */
