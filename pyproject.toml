@@ -3,9 +3,9 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "kid_media"
+name = "fun_forge"
 version = "0.1.0"
-description = "KidMedia - A kid-friendly touchscreen media server for music, movies, and shows"
+description = "FunForge - A kid-friendly touchscreen media server for music, movies, and shows"
 authors = [
     {name = "Brandon Bell", email = "brandon@forge-freedom.com"},
 ]
@@ -36,11 +36,11 @@ dev = [
 ]
 
 [project.scripts]
-kidmedia-server = "kid_media.server:main"
+funforge-server = "fun_forge.server:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["kid_media"]
+packages = ["fun_forge"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

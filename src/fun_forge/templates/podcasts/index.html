@@ -1,0 +1,1036 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Queue Sidebar -->
+<div class="queue-overlay" id="queueOverlay" onclick="toggleQueue()"></div>
+<div class="queue-sidebar" id="queueSidebar">
+    <div class="queue-header">
+        <span class="queue-title">🎧 Up Next</span>
+        <button class="queue-close" onclick="toggleQueue()">✕</button>
+    </div>
+
+    <!-- Player card — now playing and the transport controls in one surface. -->
+    <div class="player-card player-card-idle" id="nowPlaying">
+        <div class="pc-head">
+            <div class="pc-art" id="nowPlayingArt">🎧</div>
+            <div class="pc-meta">
+                <div class="pc-title" id="nowPlayingTitle">Nothing playing</div>
+                <div class="pc-artist" id="nowPlayingArtist">Pick a story!</div>
+            </div>
+        </div>
+
+        <div class="pc-scrub">
+            <div class="pc-bar"><div class="pc-bar-fill" id="pcBarFill"></div></div>
+            <div class="pc-times">
+                <span id="pcElapsed">0:00</span>
+                <span id="pcTotal">0:00</span>
+            </div>
+        </div>
+
+        <div class="pc-controls">
+            <button class="pc-btn" onclick="pinProtectedAction(previousEpisode)" title="Previous" aria-label="Previous">⏮️</button>
+            <button class="pc-btn pc-btn-main" id="playPauseBtn" onclick="pinProtectedAction(togglePlay)" title="Play/Pause" aria-label="Play or pause">▶️</button>
+            <button class="pc-btn" onclick="pinProtectedAction(nextEpisode)" title="Skip" aria-label="Skip">⏭️</button>
+            <button class="pc-btn pc-btn-stop" onclick="pinProtectedAction(clearQueue)" title="Stop &amp; Clear" aria-label="Stop and clear">⏹️</button>
+        </div>
+    </div>
+
+    <div class="queue-list" id="queueList">
+        <div class="queue-empty">No stories queued yet!</div>
+    </div>
+</div>
+
+<!-- Main Content Area -->
+<div class="music-main" id="musicMain">
+    <!-- Controls Bar -->
+    <div class="controls-bar">
+        <button class="queue-hamburger" onclick="toggleQueue()" id="queueHamburger">
+            <span class="hamburger-icon">☰</span>
+        </button>
+
+        <div class="turn-indicator" id="turnIndicator">
+            <span class="turn-dot" id="turnDot"></span>
+            <span class="turn-name" id="turnName"></span>
+            <span class="turn-counter" id="turnCounter"></span>
+        </div>
+
+        <div class="controls-right">
+            <!-- Editing is a mode *inside* parent mode (see Songs) — unlocking
+                 gets you play + queue on every show, nothing destructive. -->
+            <button class="ctrl-btn" id="editModeToggleBtn" onclick="toggleEditMode()" style="display:none;" title="Edit Mode — tap to turn on">✏️</button>
+            <!-- The lock button is injected here by funforge-lock.js — the same
+                 control, and the same unlock, as every other page. -->
+        </div>
+    </div>
+
+    <!-- Search bar (parent mode only) -->
+    <div class="search-bar" id="searchBar" style="display:none;">
+        <input type="text" id="searchInput" placeholder="Search stories..." oninput="filterShows()">
+        <button class="search-clear" onclick="clearSearch()">✕</button>
+    </div>
+
+    <!-- Show Grid -->
+    <div class="album-grid" id="showGrid">
+        {% for show in shows %}
+        <div class="album-card-wrapper" data-show-id="{{ show.id }}">
+            <!-- The href stays for direct links / no-JS, but the click opens an
+                 in-page sheet: navigating away would destroy this page's <audio>
+                 and stop playback just because someone opened a show. -->
+            <a href="/podcasts/shows/{{ show.id }}" class="album-card"
+               onclick="return openShowSheet({{ show.id }}, event)">
+                <div class="album-cover">
+                    {% if show.cover_art_path %}
+                    <img src="{{ show.cover_art_path }}" alt="{{ show.title }}">
+                    {% else %}
+                    <div class="album-cover-placeholder">🎙️</div>
+                    {% endif %}
+                    <!-- Parent mode only: play the show, or queue it from the
+                         corner ➕. Tapping the card still opens the episode list. -->
+                    <div class="album-dp-overlay" style="display:none;">
+                        <button class="album-dp-play-btn"
+                                onclick="event.preventDefault(); event.stopPropagation(); playShowNow({{ show.id }})"
+                                title="Play Show Now">▶</button>
+                    </div>
+                    <button class="album-queue-corner" style="display:none;"
+                            onclick="event.preventDefault(); event.stopPropagation(); queueShow({{ show.id }})"
+                            title="Add Show to Queue">+</button>
+                </div>
+                <div class="album-info">
+                    <div class="album-title">{{ show.title }}</div>
+                    <div class="album-artist">{{ show.episodes | length }} episode{{ 's' if show.episodes | length != 1 else '' }}</div>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+
+        {% if not shows %}
+        <div class="empty-state" id="emptyState" style="width:100%;">
+            <p class="empty-message">No stories found!</p>
+            <button onclick="scanPodcasts()" class="big-button scan-button">
+                <span class="button-icon">🔍</span>
+                <span class="button-text">Scan for Stories</span>
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Now Playing Splash (shown when queue is playing) -->
+    <div class="now-playing-splash" id="nowPlayingSplash" style="display:none;">
+        <div class="splash-art" id="splashArt">
+            <div class="splash-art-placeholder">🎙️</div>
+        </div>
+        <div class="splash-title" id="splashTitle"></div>
+        <div class="splash-artist" id="splashArtist"></div>
+    </div>
+</div>
+
+<!-- In-page show browser (see openShowSheet) -->
+<div class="sheet-overlay" id="mediaSheet" style="display:none;" onclick="if(event.target===this) closeMediaSheet()">
+    <div class="sheet">
+        <div class="sheet-head">
+            <div class="sheet-art" id="sheetArt">🎙️</div>
+            <div class="sheet-titles">
+                <div class="sheet-title" id="sheetTitle"></div>
+                <div class="sheet-subtitle" id="sheetSubtitle"></div>
+            </div>
+            <button class="sheet-close" onclick="closeMediaSheet()" title="Close">✕</button>
+        </div>
+        <div class="sheet-actions" id="sheetActions"></div>
+        <div class="sheet-tracks" id="sheetTracks"></div>
+    </div>
+</div>
+
+<!-- Hidden audio element -->
+<audio id="audioPlayer"></audio>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ============ STATE ============
+const KIDS = [
+    { name: 'Weston', color: '#7B1FA2', colorLight: '#CE93D8', emoji: '💜' },
+    { name: 'Rowan',  color: '#1565C0', colorLight: '#64B5F6', emoji: '💙' }
+];
+const BASE_KIDS_COUNT = 2;
+const PARENT_USER = { name: 'Parent', color: '#F9A825', colorLight: '#FFF9C4', emoji: '⭐' };
+const MAX_EPISODES_PER_KID = 1;  // podcasts: each kid picks exactly 1 episode
+const COUNT_COLORS = ['#f44336', '#4CAF50'];
+
+let currentTurn = 0;
+let picks = { 0: [], 1: [] };
+let playQueue = [];
+let currentQueueIndex = -1;
+let parentModeActive = false;
+// Editing is opt-in from parent mode, never automatic — see toggleEditMode.
+let editModeActive = false;
+let pickingLocked = false;
+let pendingUserGestureResume = false;
+
+const audioPlayer = document.getElementById('audioPlayer');
+const STORAGE_KEY = 'funforge_podcast_state';
+
+// ============ INIT ============
+document.addEventListener('DOMContentLoaded', () => {
+    // Cleanup stale cross-flow keys that can create duplicate queue behavior.
+    if (!KidLock.isUnlocked()) {
+        localStorage.removeItem('funforge_podcast_queue_add');
+    }
+
+    audioPlayer.addEventListener('ended', onEpisodeEnded);
+
+    const restored = loadState();
+    if (restored) {
+        updateTurnIndicator();
+        renderQueue();
+        if (currentQueueIndex >= 0 && currentQueueIndex < playQueue.length) {
+            updateNowPlaying(playQueue[currentQueueIndex]);
+        }
+    } else {
+        try {
+            const prev = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+            if (typeof prev.lastFirstPicker === 'number') {
+                currentTurn = prev.lastFirstPicker === 0 ? 1 : 0;
+            }
+        } catch(e) {}
+        updateTurnIndicator();
+    }
+
+    // Parent mode follows the global lock, which survives navigation and restarts.
+    if (KidLock.isUnlocked()) enterParentMode();
+    KidLock.onChange(unlocked => { if (unlocked) enterParentMode(); else exitParentMode(); });
+
+    // ── OS media integration + (in the Android app) the foreground service and
+    // wake lock that keep audio alive once the screen turns off.
+    FunForgeNative.attach({
+        audio: audioPlayer,
+        getMeta: () => {
+            const item = playQueue[currentQueueIndex];
+            if (!item) return null;
+            return {
+                title:  item.episode.title,
+                artist: item.episode.show_title || 'Story',
+                album:  'FunForge',
+                cover:  item.episode.cover_art || ''
+            };
+        },
+        onPlay:  () => { if (audioPlayer.paused)  togglePlay(); },
+        onPause: () => { if (!audioPlayer.paused) togglePlay(); },
+        onNext:  () => nextEpisode(),
+        onPrev:  () => previousEpisode(),
+        onStop:  () => { if (!audioPlayer.paused) togglePlay(); },
+        onSeek:  (sec) => { audioPlayer.currentTime = sec; }
+    });
+
+    // Screen wake lock — stops the tablet dimming while the app is in front.
+    // Background playback does not depend on it (see funforge-media.js).
+    let _wakeLock = null;
+    document.addEventListener('visibilitychange', async () => {
+        if (document.visibilityState === 'visible' && !audioPlayer.paused) {
+            try { _wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+        }
+    });
+
+    // Poll for remote commands
+    setInterval(async () => {
+        try {
+            const r = await fetch('/api/player/poll');
+            const d = await r.json();
+            if (!d.command) return;
+            switch (d.command) {
+                case 'play':   if (audioPlayer.paused && audioPlayer.src)  { audioPlayer.play(); document.getElementById('playPauseBtn').textContent = '⏸️'; } break;
+                case 'pause':  if (!audioPlayer.paused) { audioPlayer.pause(); document.getElementById('playPauseBtn').textContent = '▶️'; } break;
+                case 'toggle': togglePlay(); break;
+                case 'next':   nextEpisode(); break;
+                case 'prev':   previousEpisode(); break;
+                case 'stop':   clearQueue(); break;
+            }
+        } catch(e) {}
+    }, 1500);
+
+    setInterval(pushPlayerState, 5000);
+    audioPlayer.addEventListener('play',  pushPlayerState);
+    audioPlayer.addEventListener('pause', pushPlayerState);
+    audioPlayer.addEventListener('ended', pushPlayerState);
+
+    // Player-card progress bar and play/pause glyph.
+    audioPlayer.addEventListener('timeupdate', updateProgress);
+    audioPlayer.addEventListener('loadedmetadata', updateProgress);
+    audioPlayer.addEventListener('play',  () => document.getElementById('playPauseBtn').textContent = '⏸️');
+    audioPlayer.addEventListener('pause', () => document.getElementById('playPauseBtn').textContent = '▶️');
+
+    pickUpLocalStorageQueue();
+
+    // Backs the in-page show sheet. Fired last and not awaited — nothing above
+    // needs it, and the show links fall back to the standalone page until it lands.
+    loadEpisodes();
+});
+
+// ============ PERSISTENCE ============
+function saveState() {
+    const savedPicks = {};
+    for (let i = 0; i < BASE_KIDS_COUNT; i++) {
+        savedPicks[i] = (picks[i] || []).map(ep => ep.id);
+    }
+    const savedQueue = playQueue.map(q => ({ episodeId: q.episode.id, kidIndex: q.kidIndex }));
+    const firstPicker = picks[0].length > 0 ? 0 : 1;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        currentTurn: Math.min(currentTurn, BASE_KIDS_COUNT - 1),
+        picks: savedPicks,
+        playQueue: savedQueue,
+        currentQueueIndex,
+        lastFirstPicker: firstPicker,
+        timestamp: Date.now(),
+    }));
+}
+
+function loadState() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return false;
+        const state = JSON.parse(raw);
+        if (!state.picks) return false;
+
+        // State requires episode data — if we don't have it yet, skip
+        // (episodes are embedded in the show pages; for the main page we
+        //  store only IDs and re-hydrate via the /api/episodes endpoint)
+        return false; // simplified: always start fresh on page load
+    } catch(e) { return false; }
+}
+
+// ============ PICK-UP FROM SHOW PAGE ============
+function pickUpLocalStorageQueue() {
+    // Kid-mode single pick from show page
+    const singlePick = JSON.parse(localStorage.getItem('funforge_podcast_pick_one') || 'null');
+    if (singlePick) {
+        localStorage.removeItem('funforge_podcast_pick_one');
+        const nonceKey = singlePick._nonce ? `podcast_pick_${singlePick._nonce}` : '';
+        if (nonceKey && sessionStorage.getItem(nonceKey) === 'done') {
+            return;
+        }
+
+        if (!parentModeActive && !isTurnLocked()) {
+            localStorage.removeItem('funforge_podcast_queue_add');
+            localStorage.removeItem('funforge_podcast_play_now');
+            picks = { 0: [], 1: [] };
+            picks[currentTurn] = [singlePick];
+            playQueue = [{ episode: singlePick, kidIndex: currentTurn }];
+            currentQueueIndex = 0;
+            normalizeKidPlaybackState();
+            playCurrentQueueItem();
+            updateTurnIndicator();
+            renderQueue();
+            updateShowGridVisibility();
+            saveState();
+            if (nonceKey) sessionStorage.setItem(nonceKey, 'done');
+        }
+        return;
+    }
+
+    // Handle play-now signal from show page (parent direct play)
+    const playNow = JSON.parse(localStorage.getItem('funforge_podcast_play_now') || 'null');
+    if (playNow && playNow.length > 0) {
+        localStorage.removeItem('funforge_podcast_play_now');
+        audioPlayer.pause();
+        audioPlayer.src = '';
+        picks = { 0: [], 1: [] };
+        playQueue = playNow.map(ep => ({ episode: ep, kidIndex: -1 }));
+        currentQueueIndex = 0;
+        playCurrentQueueItem();
+        renderQueue();
+        saveState();
+        return;
+    }
+
+    const pending = JSON.parse(localStorage.getItem('funforge_podcast_queue_add') || '[]');
+    if (pending.length === 0) return;
+    localStorage.removeItem('funforge_podcast_queue_add');
+
+    if (parentModeActive) {
+        pending.forEach(ep => { playQueue.push({ episode: ep, kidIndex: -1 }); });
+        if (currentQueueIndex === -1 && playQueue.length > 0) {
+            currentQueueIndex = 0;
+            playCurrentQueueItem();
+        }
+    } else {
+        // Legacy key ignored in kid mode; single-pick key is the only source.
+        updateTurnIndicator();
+        return;
+    }
+
+    updateTurnIndicator();
+    renderQueue();
+    updateShowGridVisibility();
+    saveState();
+}
+
+// ============ QUEUE HELPERS ============
+function isTurnLocked() {
+    return playQueue.length > 0 && currentQueueIndex >= 0;
+}
+
+function normalizeKidPlaybackState() {
+    if (parentModeActive) return;
+    if (playQueue.length <= 1) return;
+    const active = playQueue[Math.max(0, Math.min(currentQueueIndex, playQueue.length - 1))] || playQueue[0];
+    playQueue = active ? [active] : [];
+    currentQueueIndex = playQueue.length ? 0 : -1;
+}
+
+function switchTurn() {
+    const newTurn = (currentTurn + 1) % KIDS.length;
+    const kid = KIDS[newTurn];
+    pickingLocked = true;
+    showTurnSwapOverlay(kid, () => {
+        currentTurn = newTurn;
+        pickingLocked = false;
+        updateTurnIndicator();
+        saveState();
+    });
+}
+
+function showTurnSwapOverlay(kid, callback) {
+    const overlay = document.createElement('div');
+    overlay.className = 'turn-swap-overlay';
+    overlay.style.background = kid.colorLight;
+    overlay.innerHTML = `<div class="turn-swap-content">
+        <div class="turn-swap-emoji">${kid.emoji}</div>
+        <div class="turn-swap-name" style="color:${kid.color};">${kid.name}'s Turn!</div>
+    </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('turn-swap-visible'));
+    setTimeout(() => {
+        overlay.classList.remove('turn-swap-visible');
+        setTimeout(() => { overlay.remove(); callback(); }, 300);
+    }, 2500);
+}
+
+// ============ PLAYBACK ============
+function playCurrentQueueItem() {
+    if (currentQueueIndex < 0 || currentQueueIndex >= playQueue.length) return;
+    normalizeKidPlaybackState();
+    const item = playQueue[currentQueueIndex];
+    audioPlayer.src = `/podcasts/stream/${item.episode.id}`;
+    audioPlayer.play().then(() => {
+        pendingUserGestureResume = false;
+        document.getElementById('playPauseBtn').textContent = '⏸️';
+    }).catch(async () => {
+        try {
+            audioPlayer.muted = true;
+            await audioPlayer.play();
+            audioPlayer.muted = false;
+            pendingUserGestureResume = false;
+            document.getElementById('playPauseBtn').textContent = '⏸️';
+        } catch (e) {
+            showTapToPlay();
+        }
+    });
+    updateNowPlaying(item);
+    updateShowGridVisibility();
+    saveState();
+}
+
+function onEpisodeEnded() {
+    document.getElementById('playPauseBtn').textContent = '▶️';
+    if (currentQueueIndex < playQueue.length - 1) {
+        currentQueueIndex++;
+        playCurrentQueueItem();
+        renderQueue();
+        return;
+    }
+    if (!parentModeActive) {
+        completeKidTurn();
+    }
+}
+
+function nextEpisode() {
+    if (currentQueueIndex < playQueue.length - 1) {
+        currentQueueIndex++;
+        playCurrentQueueItem();
+        renderQueue();
+    }
+}
+
+function previousEpisode() {
+    if (audioPlayer.currentTime > 3) { audioPlayer.currentTime = 0; return; }
+    if (currentQueueIndex > 0) {
+        currentQueueIndex--;
+        playCurrentQueueItem();
+        renderQueue();
+    }
+}
+
+function togglePlay() {
+    if (audioPlayer.paused) {
+        const item = playQueue[currentQueueIndex];
+        if (!item) return;
+        const t = audioPlayer.currentTime;
+        audioPlayer.src = `/podcasts/stream/${item.episode.id}`;
+        audioPlayer.addEventListener('canplay', function seek() {
+            audioPlayer.currentTime = t;
+            audioPlayer.removeEventListener('canplay', seek);
+        }, { once: true });
+        audioPlayer.play().then(() => {
+            document.getElementById('playPauseBtn').textContent = '⏸️';
+            pushPlayerState();
+        }).catch(() => showTapToPlay());
+    } else {
+        audioPlayer.pause();
+        document.getElementById('playPauseBtn').textContent = '▶️';
+        pushPlayerState();
+    }
+}
+
+function clearQueue() {
+    const shouldAdvanceTurn = !parentModeActive && playQueue.length > 0;
+    picks = { 0: [], 1: [] };
+    playQueue = [];
+    currentQueueIndex = -1;
+    pendingUserGestureResume = false;
+    audioPlayer.pause();
+    audioPlayer.src = '';
+    resetPlayerCard();
+    FunForgeNative.endSession();
+    renderQueue();
+    updateShowGridVisibility();
+    if (shouldAdvanceTurn) {
+        switchTurn();
+    } else {
+        updateTurnIndicator();
+    }
+    saveState();
+}
+
+function completeKidTurn() {
+    picks = { 0: [], 1: [] };
+    playQueue = [];
+    currentQueueIndex = -1;
+    pendingUserGestureResume = false;
+    audioPlayer.pause();
+    audioPlayer.src = '';
+    resetPlayerCard();
+    FunForgeNative.endSession();
+    renderQueue();
+    updateShowGridVisibility();
+    switchTurn();
+    saveState();
+}
+
+// ============ NOW PLAYING ============
+function updateNowPlaying(item) {
+    const np = document.getElementById('nowPlaying');
+    const art = document.getElementById('nowPlayingArt');
+    const titleEl = document.getElementById('nowPlayingTitle');
+    const artistEl = document.getElementById('nowPlayingArtist');
+
+    if (!item) { resetPlayerCard(); return; }
+
+    const ep = item.episode;
+    const coverArt = ep.cover_art;
+    const kid = item.kidIndex >= 0 ? KIDS[item.kidIndex] : PARENT_USER;
+    art.innerHTML = coverArt
+        ? `<img src="${coverArt}" alt="">`
+        : (ep.emoji || '🎧');
+    titleEl.textContent = ep.title;
+    artistEl.textContent = ep.show_title || '';
+    np.classList.remove('player-card-idle');
+    // Tints the play button and the progress bar with whoever's story this is.
+    np.style.setProperty('--pc-accent', kid.color);
+
+    document.getElementById('playPauseBtn').textContent = audioPlayer.paused ? '▶️' : '⏸️';
+
+    // Update splash
+    const splash = document.getElementById('nowPlayingSplash');
+    if (splash && splash.style.display !== 'none') {
+        document.getElementById('splashTitle').textContent = ep.title;
+        document.getElementById('splashArtist').textContent = ep.show_title || '';
+        const splashArt = document.getElementById('splashArt');
+        splashArt.innerHTML = coverArt
+            ? `<img src="${coverArt}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:12px;">`
+            : `<div class="splash-art-placeholder">${ep.emoji || '🎙️'}</div>`;
+    }
+
+    // Push the new episode to the lock screen / notification / watch.
+    FunForgeNative.trackChanged();
+}
+
+function updateShowGridVisibility() {
+    const showGrid = document.getElementById('showGrid');
+    const splash = document.getElementById('nowPlayingSplash');
+    const isPlaying = playQueue.length > 0 && currentQueueIndex >= 0 && !parentModeActive;
+
+    if (isPlaying) {
+        showGrid.style.display = 'none';
+        splash.style.display = 'flex';
+        const item = playQueue[currentQueueIndex];
+        if (item) updateNowPlaying(item);
+    } else {
+        showGrid.style.display = '';
+        splash.style.display = 'none';
+    }
+}
+
+// ============ QUEUE RENDER ============
+function renderQueue() {
+    normalizeKidPlaybackState();
+    const list = document.getElementById('queueList');
+    if (playQueue.length === 0) {
+        list.innerHTML = '<div class="queue-empty">No stories queued yet!</div>';
+        return;
+    }
+
+    // The current episode is deliberately not listed: the player card above
+    // already shows it, and in kid mode (one pick each) it was the ONLY row, so
+    // the sidebar showed the same story twice.
+    const upcoming = playQueue
+        .map((item, idx) => ({ item, idx }))
+        .filter(({ idx }) => idx !== currentQueueIndex);
+
+    if (upcoming.length === 0) {
+        list.innerHTML = '<div class="queue-empty">Nothing else queued.</div>';
+        return;
+    }
+
+    list.innerHTML = upcoming.map(({ item, idx }) => {
+        const ep = item.episode;
+        const kid = item.kidIndex >= 0 ? KIDS[item.kidIndex] : PARENT_USER;
+        const isPast = idx < currentQueueIndex;
+        const coverArt = ep.cover_art;
+        return `<div class="queue-item${isPast ? ' queue-item-past' : ''}"
+                     ${parentModeActive ? `onclick="playFromHere(${idx})" style="cursor:pointer;"` : ''}>
+            <div class="queue-item-art">
+                ${coverArt
+                    ? `<img src="${coverArt}" alt="">`
+                    : `<span style="font-size:22px;">${ep.emoji || '🎧'}</span>`}
+            </div>
+            <div class="queue-item-info">
+                <div class="queue-item-title">${escapeHtml(ep.title)}</div>
+                <div class="queue-item-meta" style="color:${kid.color};">${kid.emoji} ${ep.show_title || ''}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function playFromHere(index) {
+    if (!parentModeActive) return;
+    if (index < 0 || index >= playQueue.length) return;
+    currentQueueIndex = index;
+    playCurrentQueueItem();
+    renderQueue();
+    saveState();
+}
+
+// ============ TURN INDICATOR ============
+function updateTurnIndicator() {
+    const dot = document.getElementById('turnDot');
+    const name = document.getElementById('turnName');
+    const counter = document.getElementById('turnCounter');
+    const main = document.getElementById('musicMain');
+
+    if (parentModeActive) {
+        dot.style.background = PARENT_USER.color;
+        name.textContent = `${PARENT_USER.emoji} Parent Mode`;
+        name.style.color = '#fff';
+        if (counter) counter.style.display = 'none';
+        main.className = 'music-main';
+        main.style.background = '';
+        return;
+    }
+
+    const kid = KIDS[currentTurn];
+    const remaining = MAX_EPISODES_PER_KID - (picks[currentTurn] || []).length;
+    if (isTurnLocked()) {
+        dot.style.background = kid.color;
+        name.textContent = `${kid.emoji} ${kid.name} is listening`;
+        name.style.color = '#fff';
+        if (counter) {
+            counter.textContent = '🔒';
+            counter.style.background = '#2E7D32';
+            counter.style.display = 'flex';
+        }
+        main.className = 'music-main turn-' + currentTurn;
+        main.style.background = '';
+        return;
+    }
+
+    dot.style.background = kid.color;
+    name.textContent = `${kid.emoji} ${kid.name}'s Turn — pick a story!`;
+    name.style.color = '#fff';
+    if (counter) {
+        counter.textContent = remaining;
+        counter.style.background = COUNT_COLORS[Math.min(remaining, COUNT_COLORS.length - 1)];
+        counter.style.display = 'flex';
+    }
+    if (currentTurn < BASE_KIDS_COUNT) {
+        main.className = 'music-main turn-' + currentTurn;
+        main.style.background = '';
+    } else {
+        main.className = 'music-main';
+        main.style.background = kid.color;
+    }
+}
+
+// ============ PARENT MODE ============
+// Driven entirely by the global lock (see funforge-lock.js), so this page can't
+// disagree with Sounds about whether a grown-up is in charge.
+function enterParentMode() {
+    parentModeActive = true;
+    document.getElementById('searchBar').style.display = 'flex';
+
+    // Offer editing, don't turn it on — same rule as Songs.
+    editModeActive = false;
+    const editBtn = document.getElementById('editModeToggleBtn');
+    editBtn.style.display = 'flex';
+    editBtn.classList.remove('edit-mode-active');
+    editBtn.title = 'Edit Mode — tap to turn on';
+
+    applyCardControls();
+    updateTurnIndicator();
+    updateShowGridVisibility();
+}
+
+function exitParentMode() {
+    parentModeActive = false;
+    editModeActive = false;
+    const editBtn = document.getElementById('editModeToggleBtn');
+    editBtn.style.display = 'none';
+    editBtn.classList.remove('edit-mode-active');
+
+    applyCardControls();
+    document.getElementById('searchBar').style.display = 'none';
+    document.getElementById('searchInput').value = '';
+    filterShows('');
+    updateTurnIndicator();
+    updateShowGridVisibility();
+}
+
+// ============ EDIT MODE (parent mode only) ============
+// Nothing on this page is destructive yet — editing just reveals the ⚙️ that
+// opens a show's episode-emoji page — but it stays behind the same second tap as
+// Songs so the two screens don't disagree about what "parent mode" means.
+function toggleEditMode(on) {
+    editModeActive = (on === undefined) ? !editModeActive : !!on;
+    const btn = document.getElementById('editModeToggleBtn');
+    btn.classList.toggle('edit-mode-active', editModeActive);
+    btn.title = editModeActive ? 'Edit Mode on — tap to turn off' : 'Edit Mode — tap to turn on';
+    applyCardControls();
+    if (sheetState) renderSheetActions();
+}
+
+/** Play/queue buttons belong to plain parent mode; edit mode hides them. */
+function applyCardControls() {
+    const playing = parentModeActive && !editModeActive;
+    document.querySelectorAll('.album-dp-overlay').forEach(el => el.style.display = playing ? 'flex' : 'none');
+    document.querySelectorAll('.album-queue-corner').forEach(el => el.style.display = playing ? 'flex' : 'none');
+}
+
+// ============ WHOLE-SHOW ACTIONS (card buttons) ============
+function episodesForShow(showId) {
+    return allEpisodes.filter(e => e.show_id === showId);
+}
+
+function playShowNow(showId) {
+    const eps = episodesForShow(showId);
+    if (eps.length === 0) return;
+    audioPlayer.pause();
+    audioPlayer.src = '';
+    picks = { 0: [], 1: [] };
+    playQueue = eps.map(ep => ({ episode: ep, kidIndex: -1 }));
+    currentQueueIndex = 0;
+    playCurrentQueueItem();
+    renderQueue();
+    saveState();
+}
+
+function queueShow(showId) {
+    const eps = episodesForShow(showId);
+    if (eps.length === 0) return;
+    eps.forEach(ep => playQueue.push({ episode: ep, kidIndex: -1 }));
+    if (currentQueueIndex === -1) {
+        currentQueueIndex = 0;
+        playCurrentQueueItem();
+    }
+    renderQueue();
+    saveState();
+}
+
+// The first correct PIN unlocks globally and stays unlocked until the parent
+// taps the lock — this used to re-prompt on every button press.
+function pinProtectedAction(action) {
+    KidLock.require(action);
+}
+
+// ============ IN-PAGE SHOW SHEET ============
+// Opening a show used to navigate to /podcasts/shows/<id>, which tore down this
+// page (stopping anything playing) and had to hand the pick back through
+// localStorage with a nonce to stop it being replayed. The sheet keeps it all
+// here: pick an episode and it starts, with no page load in between.
+
+let allEpisodes = [];
+
+async function loadEpisodes() {
+    try {
+        const r = await fetch('/podcasts/api/episodes');
+        allEpisodes = await r.json();
+    } catch (e) {
+        allEpisodes = [];
+    }
+}
+
+let sheetState = null;
+
+function openShowSheet(showId, event) {
+    if (event) event.preventDefault();
+    const eps = allEpisodes.filter(e => e.show_id === showId);
+    // Episodes load asynchronously; if they aren't here yet, let the link
+    // through to the standalone page rather than opening an empty sheet.
+    if (eps.length === 0) return true;
+
+    sheetState = { showId: showId, episodes: eps };
+    document.getElementById('sheetArt').innerHTML = eps[0].cover_art
+        ? `<img src="${eps[0].cover_art}" alt="">`
+        : '🎙️';
+    document.getElementById('sheetTitle').textContent = eps[0].show_title || 'Story';
+    document.getElementById('sheetSubtitle').textContent =
+        `${eps.length} episode${eps.length === 1 ? '' : 's'}`;
+
+    renderSheetActions();
+    renderSheetEpisodes();
+
+    const overlay = document.getElementById('mediaSheet');
+    overlay.style.display = 'flex';
+    requestAnimationFrame(() => overlay.classList.add('sheet-open'));
+    return false;  // cancel the <a> navigation
+}
+
+/** Play All / Queue All for grown-ups; the ⚙️ only once they've asked to edit. */
+function renderSheetActions() {
+    const el = document.getElementById('sheetActions');
+    if (!parentModeActive || !sheetState) { el.innerHTML = ''; return; }
+    el.innerHTML =
+        '<button class="sheet-btn sheet-btn-play" onclick="sheetPlayAll()">▶️ Play All</button>' +
+        '<button class="sheet-btn" onclick="sheetQueueAll()">➕ Queue All</button>' +
+        (editModeActive
+            ? `<button class="sheet-btn" onclick="window.location.href='/podcasts/shows/${sheetState.showId}'" title="Edit episode emojis">⚙️</button>`
+            : '');
+}
+
+function renderSheetEpisodes() {
+    if (!sheetState) return;
+    const list = document.getElementById('sheetTracks');
+
+    // A kid already has something playing — their turn is over until it ends or
+    // a parent stops it, so don't offer a list of taps that do nothing.
+    if (!parentModeActive && isTurnLocked()) {
+        list.innerHTML = '<div class="sheet-note">🎧 Something is already playing!<br>' +
+            '<span>Listen to it first.</span></div>';
+        return;
+    }
+
+    list.innerHTML = sheetState.episodes.map((ep, i) => `
+        <div class="sheet-track" ${parentModeActive ? '' : `onclick="sheetPickEpisode(${ep.id})"`}>
+            <div class="sheet-track-num">${ep.emoji || '🎙️'}</div>
+            <div class="sheet-track-info">
+                <div class="sheet-track-title">${escapeHtml(ep.title)}</div>
+                <div class="sheet-track-sub">${ep.duration ? formatDuration(ep.duration) : ''}</div>
+            </div>
+            ${parentModeActive
+                ? `<div class="sheet-track-btns">
+                       <button class="sheet-mini" onclick="event.stopPropagation(); sheetPlayEpisode(${ep.id})" title="Play now">▶️</button>
+                       <button class="sheet-mini" onclick="event.stopPropagation(); sheetQueueEpisode(${ep.id})" title="Add to queue">➕</button>
+                   </div>`
+                : '<div class="sheet-track-mark">▶️</div>'}
+        </div>`).join('');
+}
+
+function formatDuration(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function episodeById(id) {
+    return allEpisodes.find(e => e.id === id);
+}
+
+/** Kid mode: this is the current kid's one pick — it replaces the queue and plays. */
+function sheetPickEpisode(episodeId) {
+    const ep = episodeById(episodeId);
+    if (!ep || pickingLocked || isTurnLocked()) return;
+    picks = { 0: [], 1: [] };
+    picks[currentTurn] = [ep];
+    playQueue = [{ episode: ep, kidIndex: currentTurn }];
+    currentQueueIndex = 0;
+    normalizeKidPlaybackState();
+    playCurrentQueueItem();
+    updateTurnIndicator();
+    renderQueue();
+    updateShowGridVisibility();
+    saveState();
+    closeMediaSheet();
+}
+
+function sheetPlayEpisode(episodeId) {
+    const ep = episodeById(episodeId);
+    if (!ep) return;
+    const insertAt = currentQueueIndex + 1;
+    playQueue.splice(insertAt, 0, { episode: ep, kidIndex: -1 });
+    currentQueueIndex = insertAt;
+    playCurrentQueueItem();
+    renderQueue();
+    saveState();
+}
+
+function sheetQueueEpisode(episodeId) {
+    const ep = episodeById(episodeId);
+    if (!ep) return;
+    playQueue.push({ episode: ep, kidIndex: -1 });
+    if (currentQueueIndex === -1) {
+        currentQueueIndex = 0;
+        playCurrentQueueItem();
+    }
+    renderQueue();
+    saveState();
+}
+
+function sheetPlayAll() {
+    if (!sheetState) return;
+    audioPlayer.pause();
+    audioPlayer.src = '';
+    picks = { 0: [], 1: [] };
+    playQueue = sheetState.episodes.map(ep => ({ episode: ep, kidIndex: -1 }));
+    currentQueueIndex = 0;
+    playCurrentQueueItem();
+    renderQueue();
+    saveState();
+    closeMediaSheet();
+}
+
+function sheetQueueAll() {
+    if (!sheetState) return;
+    sheetState.episodes.forEach(ep => playQueue.push({ episode: ep, kidIndex: -1 }));
+    if (currentQueueIndex === -1 && playQueue.length > 0) {
+        currentQueueIndex = 0;
+        playCurrentQueueItem();
+    }
+    renderQueue();
+    saveState();
+    closeMediaSheet();
+}
+
+function closeMediaSheet() {
+    const overlay = document.getElementById('mediaSheet');
+    overlay.classList.remove('sheet-open');
+    setTimeout(() => { overlay.style.display = 'none'; }, 200);
+    sheetState = null;
+}
+
+// ============ SEARCH ============
+function filterShows(val) {
+    const q = (val !== undefined ? val : document.getElementById('searchInput').value).toLowerCase();
+    document.querySelectorAll('.album-card-wrapper').forEach(card => {
+        const title = card.querySelector('.album-title')?.textContent.toLowerCase() || '';
+        card.style.display = (!q || title.includes(q)) ? '' : 'none';
+    });
+}
+
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    filterShows('');
+}
+
+// ============ SCAN ============
+async function scanPodcasts() {
+    const btn = event.target.closest('button');
+    if (btn) btn.disabled = true;
+    try {
+        const r = await fetch('/podcasts/api/scan', { method: 'POST' });
+        const d = await r.json();
+        if (d.status === 'success') window.location.reload();
+        else alert('Scan error: ' + (d.message || 'unknown'));
+    } catch(e) {
+        alert('Scan failed');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+// ============ QUEUE SIDEBAR ============
+function toggleQueue() {
+    const sidebar = document.getElementById('queueSidebar');
+    const overlay = document.getElementById('queueOverlay');
+    const isOpen = sidebar.classList.contains('queue-open');
+    sidebar.classList.toggle('queue-open', !isOpen);
+    overlay.classList.toggle('queue-overlay-visible', !isOpen);
+}
+
+// ============ TAP TO PLAY ============
+function showTapToPlay() {
+    if (pendingUserGestureResume) return;
+    pendingUserGestureResume = true;
+
+    const resume = () => {
+        if (!pendingUserGestureResume) return;
+        audioPlayer.play().then(() => {
+            pendingUserGestureResume = false;
+            document.getElementById('playPauseBtn').textContent = '⏸️';
+        }).catch(() => {});
+    };
+
+    document.addEventListener('pointerdown', resume, { once: true, capture: true });
+    document.addEventListener('touchstart', resume, { once: true, capture: true });
+}
+
+// ============ PLAYER CARD PROGRESS ============
+function updateProgress() {
+    const fill = document.getElementById('pcBarFill');
+    if (!fill) return;
+    const dur = audioPlayer.duration;
+    const pos = audioPlayer.currentTime || 0;
+    fill.style.width = (isFinite(dur) && dur > 0)
+        ? `${Math.min(100, (pos / dur) * 100)}%`
+        : '0%';
+    document.getElementById('pcElapsed').textContent =
+        isFinite(pos) ? formatDuration(pos) : '0:00';
+    document.getElementById('pcTotal').textContent =
+        isFinite(dur) && dur > 0 ? formatDuration(dur) : '0:00';
+}
+
+/** Put the player card back to "nothing playing" (queue cleared / turn over). */
+function resetPlayerCard() {
+    const np = document.getElementById('nowPlaying');
+    np.classList.add('player-card-idle');
+    np.style.removeProperty('--pc-accent');
+    document.getElementById('nowPlayingArt').innerHTML = '🎧';
+    document.getElementById('nowPlayingTitle').textContent = 'Nothing playing';
+    document.getElementById('nowPlayingArtist').textContent = 'Pick a story!';
+    document.getElementById('playPauseBtn').textContent = '▶️';
+    updateProgress();
+}
+
+// ============ REMOTE PLAYER STATE ============
+async function pushPlayerState() {
+    const item = playQueue[currentQueueIndex];
+    try {
+        await fetch('/api/player/state', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                playing: !audioPlayer.paused,
+                track_id: item ? item.episode.id : null,
+                title: item ? item.episode.title : null,
+                artist: item ? (item.episode.show_title || null) : null,
+                album: 'Podcast',
+                cover_art: item ? (item.episode.cover_art || null) : null,
+                duration: item ? (item.episode.duration || null) : null,
+                position: audioPlayer.currentTime || null,
+            }),
+        });
+    } catch(e) {}
+}
+
+// ============ UTILITY ============
+function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+{% endblock %}

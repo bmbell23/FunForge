@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{# The frame every game sits in: a full-bleed surface, a locked exit, and the
+   back-button trap. Games override `game` and, if they need scripts, `game_js`.
+   Note there is deliberately no ⬅️ Home button — the shared header is hidden on
+   game pages, because a one-tap way out is the exact thing being prevented. #}
+
+{% block content %}
+<div class="game-shell">
+    <button id="gameExitBtn" class="game-exit" type="button" aria-label="Leave the game">✖</button>
+    <div id="gameLockNudge" class="game-nudge" hidden>Ask a grown-up to finish 🔒</div>
+    {% block game %}{% endblock %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ static_url('js/funforge-game.js') }}"></script>
+{% block game_js %}{% endblock %}
+{% endblock %}

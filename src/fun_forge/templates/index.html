@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block content %}
+{# Four doors, nothing else. The old home page also carried a five-card grid of
+   library statistics — song/album/artist/show/episode counts — which is exactly
+   the sort of thing a three-year-old cannot use and has to look past to find the
+   button they wanted. Order is fixed and the 2x2 shape never reflows, so the
+   tile you want is always in the same corner. #}
+<div class="home">
+    <a href="/music/" class="home-tile home-tile-songs">
+        <span class="home-tile-icon">🎵</span>
+        <span class="home-tile-text">Songs</span>
+    </a>
+    <a href="/podcasts/" class="home-tile home-tile-stories">
+        <span class="home-tile-icon">🎧</span>
+        <span class="home-tile-text">Stories</span>
+    </a>
+    <a href="/videos/" class="home-tile home-tile-videos">
+        <span class="home-tile-icon">🎬</span>
+        <span class="home-tile-text">Videos</span>
+    </a>
+    <a href="/games/" class="home-tile home-tile-games">
+        <span class="home-tile-icon">🎮</span>
+        <span class="home-tile-text">Games</span>
+    </a>
+</div>
+{% endblock %}

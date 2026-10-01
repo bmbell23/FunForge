@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end smoke test for KidMedia's player, parent lock and Android bridge.
+"""End-to-end smoke test for FunForge's player, parent lock and Android bridge.
 
 Drives a real browser against the running container, so it covers the things
 that only break in a browser: the global parent lock, the in-page album/show
@@ -18,11 +18,11 @@ from playwright.sync_api import sync_playwright
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8006"
 
-# Stands in for the Android shell's window.KidMedia, recording every call so we
+# Stands in for the Android shell's window.FunForge, recording every call so we
 # can assert the page actually drives the foreground media service.
 FAKE_BRIDGE = """
 window.__bridgeCalls = [];
-window.KidMedia = {
+window.FunForge = {
   isNativeApp: () => true,
   mediaStart: (t,a,c) => window.__bridgeCalls.push(['start',t,a,c]),
   mediaMeta:  (t,a,c) => window.__bridgeCalls.push(['meta',t,a,c]),
@@ -95,9 +95,9 @@ def run(page, errors):
 
     # ---- native media bridge ------------------------------------------------
     section("Android media bridge (background playback + lock-screen controls)")
-    page.evaluate("localStorage.setItem('kidmedia_unlocked','true')")
+    page.evaluate("localStorage.setItem('funforge_unlocked','true')")
     go("/music/")
-    assert page.evaluate("KidMediaNative.isNative"), "native bridge not detected"
+    assert page.evaluate("FunForgeNative.isNative"), "native bridge not detected"
     assert page.evaluate("typeof window.__mediaControl === 'function'"), "__mediaControl missing"
     ok("bridge detected and window.__mediaControl installed")
 
@@ -112,7 +112,9 @@ def run(page, errors):
     assert ["screen", True] in calls, "display was not held awake while playing"
     ok("playing a song starts the media session with absolute cover art")
 
-    page.locator(".song-tile").nth(1).click()
+    # Tapping a tile in parent mode *plays* it, so line up the next song with the
+    # tile's ➕ instead — otherwise there's nothing for "next" to advance to.
+    page.locator(".song-tile").nth(1).locator(".song-add-queue").click()
     page.wait_for_timeout(600)
     before = page.evaluate("currentQueueIndex")
     page.evaluate("window.__bridgeCalls = []")
@@ -168,7 +170,7 @@ def run(page, errors):
     assert not page.evaluate("audioPlayer.paused"), "music stopped while browsing"
     ok("music keeps playing while browsing albums and artists")
 
-    page.evaluate("closeMediaSheet(); clearQueue(); localStorage.removeItem('kidmedia_unlocked')")
+    page.evaluate("closeMediaSheet(); clearQueue(); localStorage.removeItem('funforge_unlocked')")
     go("/podcasts/")
     page.wait_for_timeout(800)
     assert page.evaluate("allEpisodes.length") > 0, "episode list never loaded"
@@ -184,25 +186,208 @@ def run(page, errors):
     assert state["locked"], "turn was not locked after a pick"
     ok("kid picks a podcast episode from the sheet and it plays immediately")
 
+    # ---- parent mode vs edit mode -------------------------------------------
+    # Unlocking makes you a grown-up with a player, not a librarian: play and
+    # queue on every card, and nothing that can delete anything until you ask.
+    section("Parent mode is not edit mode")
+    page.evaluate("localStorage.setItem('funforge_unlocked','true')")
+    go("/music/")
+    page.wait_for_timeout(400)
+    assert page.evaluate("parentModeActive && !editModeActive"), "unlocking turned edit mode on"
+    tile = page.locator(".song-tile").first
+    assert tile.locator(".song-add-queue").count() == 1, "no ➕ on a parent-mode song tile"
+    assert tile.locator(".song-checkbox").count() == 0, "checkboxes on a plain parent-mode tile"
+    assert tile.locator(".song-edit-btn").count() == 0, "gear button on a plain parent-mode tile"
+    assert page.locator("#songBulkActionBar").count() == 0, "bulk delete bar without asking for it"
+    ok("parent mode gives each song tile play + ➕ and nothing else")
+
+    page.click("#viewToggleBtn")            # songs -> albums
+    page.wait_for_timeout(300)
+    assert page.locator(".album-queue-corner").first.is_visible(), "album cards have no ➕"
+    assert page.locator(".album-dp-play-btn").first.is_visible(), "album cards have no play button"
+    assert not page.locator(".parent-controls").first.is_visible(), \
+        "album checkbox/gear showing without edit mode"
+    ok("album cards get play + ➕, not checkboxes")
+
+    page.click("#editModeToggleBtn")
+    page.wait_for_timeout(300)
+    assert page.locator(".parent-controls").first.is_visible(), "edit mode did not reveal album controls"
+    assert not page.locator(".album-queue-corner").first.is_visible(), "play/queue clutter left in edit mode"
+    assert page.locator("#bulkActionBar").is_visible(), "edit mode did not show the album bulk bar"
+    page.click("#viewToggleBtn"); page.click("#viewToggleBtn")   # back to songs
+    page.wait_for_timeout(300)
+    tile = page.locator(".song-tile").first
+    assert tile.locator(".song-checkbox").count() == 1, "edit mode has no song checkbox"
+    tile.click()
+    page.wait_for_timeout(200)
+    assert page.evaluate("document.querySelectorAll('.song-checkbox:checked').length") == 1, \
+        "tapping a tile in edit mode did not select it"
+    assert page.evaluate("audioPlayer.paused"), "tapping a tile in edit mode started playback"
+    ok("edit mode is a second, deliberate tap — then checkboxes, gears and bulk actions appear")
+
+    page.click("#editModeToggleBtn")
+    page.wait_for_timeout(300)
+    assert page.locator(".song-tile").first.locator(".song-checkbox").count() == 0, \
+        "leaving edit mode left the checkboxes behind"
+    assert page.evaluate("parentModeActive"), "leaving edit mode also dropped parent mode"
+    ok("turning edit mode off keeps you in parent mode")
+
+    go("/podcasts/")
+    page.wait_for_timeout(800)
+    assert page.evaluate("parentModeActive && !editModeActive"), "Stories opened straight into edit mode"
+    assert page.locator(".album-queue-corner").first.is_visible(), "show cards have no ➕"
+    page.locator(".album-card").first.click()
+    page.wait_for_timeout(500)
+    actions = page.locator(".sheet-actions").inner_text()
+    assert "⚙️" not in actions, "show sheet offered the edit gear outside edit mode"
+    assert "Play All" in actions, "parent lost Play All"
+    page.evaluate("closeMediaSheet()")
+    page.click("#editModeToggleBtn")
+    page.wait_for_timeout(300)
+    page.locator(".album-card").first.click()
+    page.wait_for_timeout(500)
+    assert "⚙️" in page.locator(".sheet-actions").inner_text(), "edit mode did not reveal the gear"
+    page.evaluate("closeMediaSheet(); clearQueue()")
+    ok("Stories follows the same rule: play + ➕ by default, gear only in edit mode")
+
     # ---- home page ----------------------------------------------------------
     section("Home page")
     go("/")
     tiles = [el.strip() for el in page.locator(".home-tile-text").all_inner_texts()]
-    assert tiles == ["Songs", "Stories", "Videos"], f"home tiles are {tiles}"
+    assert tiles == ["Songs", "Stories", "Videos", "Games"], f"home tiles are {tiles}"
     assert page.locator(".stats-grid").count() == 0, "the library-stats grid is still there"
     assert page.evaluate("document.body.scrollHeight - innerHeight") <= 0, \
-        "home page scrolls — the three doors should fit on one screen"
-    ok("home is three tiles (Songs / Stories / Videos) that fit without scrolling")
+        "home page scrolls — the four doors should fit on one screen"
+    # The 2x2 grid must sit centred in what the header leaves. A desktop rule for
+    # the queue sidebar used to push .main-content 320px right on every page,
+    # including this one, which has no sidebar at all.
+    off = page.evaluate("""() => {
+        const g = document.querySelector('.home').getBoundingClientRect();
+        return Math.abs((g.left + g.right) / 2 - innerWidth / 2);
+    }""")
+    assert off <= 2, f"home grid is off-centre by {off}px"
+    ok("home is four tiles (Songs / Stories / Videos / Games), centred, no scrolling")
+
+    go("/games/")
+    assert page.locator(".game-card").count() >= 1, "the Games door opens onto nothing"
+    ok("the Games tile opens a picker with at least one game")
+
+    # ---- games ---------------------------------------------------------------
+    section("Games (a game you start is a game you finish)")
+
+    def pairs_on_board():
+        ids = page.eval_on_selector_all(".cm-card", "els => els.map(e => e.dataset.id)")
+        groups = {}
+        for i, cid in enumerate(ids):
+            groups.setdefault(cid, []).append(i)
+        return groups
+
+    page.evaluate("localStorage.removeItem('funforge_unlocked')")
+    go("/games/")
+    page.click(".game-card")
+    page.wait_for_selector(".cm-card")
+    page.wait_for_timeout(500)
+
+    assert page.locator(".cm-card").count() == 4, "first board should be the easiest (2 pairs)"
+    assert page.evaluate("getComputedStyle(document.querySelector('.header')).display") == "none", \
+        "the shared header (and its ⬅️ Home button) is visible inside a game"
+    ok("a game opens full-bleed with no one-tap way out")
+
+    # Cells must stay square — album art is square, and 1fr tracks on a phone
+    # cropped the middle out of every cover.
+    box = page.evaluate("""() => {
+        const r = document.querySelector('.cm-card').getBoundingClientRect();
+        return Math.abs(r.width - r.height);
+    }""")
+    assert box <= 2, f"cards are {box}px off square, covers will be cropped"
+    assert page.evaluate("document.body.scrollHeight - innerHeight") <= 0, "the board scrolls"
+    ok("cards are square and the board never scrolls")
+
+    # The Android hardware Back key runs webView.goBack() regardless of what this
+    # page wants (MainActivity.onKeyDown), so the shell traps history instead.
+    for _ in range(4):
+        page.go_back()
+        page.wait_for_timeout(250)
+    assert "/games/cover-match/" in page.url, f"Back escaped the game — now at {page.url}"
+    assert page.locator(".cm-card").count() == 4, "Back tore the board down"
+    ok("Back can't leave a game, however many times it's pressed")
+
+    groups = pairs_on_board()
+    for idxs in groups.values():
+        for i in idxs:
+            page.locator(".cm-card").nth(i).click()
+            page.wait_for_timeout(120)
+        page.wait_for_timeout(320)
+    assert page.locator(".cm-card-done").count() == 4, "matched pairs did not stay face up"
+    ok("matching a pair locks it face up")
+
+    page.wait_for_timeout(2400)
+    assert page.locator(".cm-card").count() == 6, "clearing the board did not deal a bigger one"
+    ok("clearing deals the next board up — endless, with no way to lose")
+
+    page.click("#gameExitBtn")
+    page.wait_for_timeout(300)
+    assert page.locator("#pinOverlay").count() == 1, "the exit let go without a PIN"
+    for digit in "9999":
+        page.click(f'.pin-key[data-digit="{digit}"]')
+    page.wait_for_timeout(500)
+    assert "/games/cover-match/" in page.url, "a wrong PIN got out of the game"
+    ok("leaving costs a PIN, and a wrong one doesn't")
+
+    for digit in "1234":
+        page.click(f'.pin-key[data-digit="{digit}"]')
+    page.wait_for_timeout(900)
+    assert page.url.rstrip("/").endswith("/games"), f"right PIN did not leave, at {page.url}"
+    # KidLock unlocks globally on success; a game that started locked puts it back,
+    # or one PIN entry would leave every later game freely exitable.
+    assert not page.evaluate("KidLock.isUnlocked()"), \
+        "exiting a game left the whole app unlocked"
+    ok("the right PIN leaves, and re-locks the app behind it")
+
+    # The family game only exists once photos have been synced from Immich and
+    # approved, so this is conditional rather than a hard requirement.
+    if page.locator(".game-card-family").count():
+        page.click(".game-card-family")
+        page.wait_for_selector(".cm-card")
+        page.wait_for_timeout(500)
+        srcs = page.eval_on_selector_all(".cm-front img", "els => els.map(e => e.getAttribute('src'))")
+        assert srcs and all("/static/faces/" in s for s in srcs), \
+            f"family board is not using the cached face photos: {srcs[:2]}"
+        page.go_back()
+        page.wait_for_timeout(300)
+        assert "/games/family-match/" in page.url, "Back escaped the family game"
+        ok("Match the Family deals approved photos and locks the same way")
+
+        # Only approved photos may ever reach a board.
+        import json as _json
+        allowed = page.evaluate("""async () => {
+            const r = await fetch('/games/api/pictures?source=family&count=24');
+            return (await r.json()).pictures.map(p => p.cover);
+        }""")
+        page.goto(BASE + "/games/photos/", wait_until="networkidle")
+        on = page.eval_on_selector_all(".fp-photo-on", "els => els.map(e => e.dataset.id)")
+        assert all(any(i in c for i in on) for c in allowed), \
+            "an unapproved photo was served to a game board"
+        ok("unapproved photos never reach a board")
+    else:
+        ok("family game correctly hidden — no approved photos synced")
 
     # ---- player card --------------------------------------------------------
     section("Player card")
-    page.evaluate("localStorage.setItem('kidmedia_unlocked','true')")
+    page.evaluate("localStorage.setItem('funforge_unlocked','true')")
     go("/music/")
     card = page.locator("#nowPlaying")
     assert "player-card-idle" in (card.get_attribute("class") or ""), \
         "player card does not start idle"
     assert page.locator(".sidebar-controls").count() == 0, "the old black control strip is back"
     ok("idle player card, no separate control strip")
+
+    # The track list arrives asynchronously. Slicing it before it lands builds an
+    # empty queue, nothing plays, and every assertion below fails for a reason
+    # that has nothing to do with the player — the actual cause of this test
+    # failing roughly one run in three.
+    page.wait_for_function("() => Array.isArray(allTracks) && allTracks.length >= 10",
+                           timeout=15000)
 
     # Fill both kids' picks so the interleaved queue builds and starts.
     page.evaluate("""() => {
@@ -211,7 +396,13 @@ def run(page, errors):
         buildAndStartPlayQueue();
         updateTurnIndicator(); renderQueue(); renderSongGrid();
     }""")
-    page.wait_for_timeout(2500)
+    # Wait on the condition, not the clock. A flat sleep here raced audio
+    # start-up in headless Chromium and failed about one run in three.
+    page.wait_for_function(
+        """() => !audioPlayer.paused
+                 && !document.getElementById('nowPlaying').classList.contains('player-card-idle')
+                 && parseFloat(document.getElementById('pcBarFill').style.width || '0') > 0""",
+        timeout=15000)
     assert not page.evaluate("audioPlayer.paused"), "queue did not start playing"
     assert "player-card-idle" not in (card.get_attribute("class") or ""), "card stayed idle"
     assert page.evaluate("document.getElementById('nowPlaying').style.getPropertyValue('--pc-accent')"), \
@@ -266,7 +457,7 @@ def run(page, errors):
     page.goto(BASE + "/", wait_until="networkidle")
     page.wait_for_timeout(300)
     page.remove_listener("response", grab)
-    html_cc = next((v for k, v in headers.items() if k.rstrip("/").endswith("8006")), None)
+    html_cc = next((v for k, v in headers.items() if k.rstrip("/") == BASE.rstrip("/")), None)
     css_cc = next((v for k, v in headers.items() if "style.css" in k), None)
     assert css_cc and "immutable" in css_cc, f"versioned CSS cache-control is {css_cc!r}"
     assert html_cc == "no-cache", f"HTML cache-control is {html_cc!r} — cached pages mean cached ?v= stamps"

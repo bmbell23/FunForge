@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block header_nav %}
+<a href="/games/" class="back-button">⬅️ Games</a>
+{% endblock %}
+
+{% block content %}
+{# Parent screen. Nothing Immich hands over is approved by syncing: face
+   recognition returns every photo of a child, so a grown-up looks first. Tapping
+   a photo toggles it; the whole set saves in one go. #}
+<div class="dashboard">
+    <h2 class="page-title">Family Photos</h2>
+
+    {% if not photos %}
+    <div class="empty-state" style="background:#ffffffcc; border-radius:20px; padding:32px; text-align:center;">
+        <p class="empty-message">No photos cached yet.</p>
+        <p style="font-size:20px;color:#555;margin-top:10px;">
+            Run <code>python3 scripts/sync_immich_faces.py</code> on the server first.
+        </p>
+    </div>
+    {% else %}
+    <div class="fp-bar">
+        <span id="fpCount" class="fp-count">{{ approved_count }} of {{ photos|length }} approved</span>
+        <span class="fp-actions">
+            <button type="button" id="fpAll"  class="fp-btn">Approve all</button>
+            <button type="button" id="fpNone" class="fp-btn">Clear</button>
+            <button type="button" id="fpSave" class="fp-btn fp-btn-go">Save</button>
+        </span>
+    </div>
+
+    <div class="fp-grid">
+        {% for photo in photos %}
+        <button type="button"
+                class="fp-photo{% if photo.approved %} fp-photo-on{% endif %}"
+                data-id="{{ photo.id }}">
+            <img src="/static/{{ photo.file }}" alt="" loading="lazy">
+            <span class="fp-person">{{ photo.person }}</span>
+            <span class="fp-tick">✓</span>
+        </button>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    'use strict';
+    var grid = document.querySelector('.fp-grid');
+    if (!grid) return;
+
+    var countEl = document.getElementById('fpCount');
+    var total = grid.children.length;
+
+    function refresh() {
+        var on = grid.querySelectorAll('.fp-photo-on').length;
+        countEl.textContent = on + ' of ' + total + ' approved';
+    }
+
+    // Approving photos of the kids is a grown-up action, so it sits behind the
+    // same lock as every other one.
+    function guarded(fn) {
+        return function () { KidLock.require(fn); };
+    }
+
+    grid.addEventListener('click', function (e) {
+        var btn = e.target.closest('.fp-photo');
+        if (!btn) return;
+        KidLock.require(function () {
+            btn.classList.toggle('fp-photo-on');
+            refresh();
+        });
+    });
+
+    document.getElementById('fpAll').addEventListener('click', guarded(function () {
+        grid.querySelectorAll('.fp-photo').forEach(function (b) { b.classList.add('fp-photo-on'); });
+        refresh();
+    }));
+
+    document.getElementById('fpNone').addEventListener('click', guarded(function () {
+        grid.querySelectorAll('.fp-photo').forEach(function (b) { b.classList.remove('fp-photo-on'); });
+        refresh();
+    }));
+
+    document.getElementById('fpSave').addEventListener('click', guarded(function () {
+        var ids = Array.prototype.map.call(
+            grid.querySelectorAll('.fp-photo-on'), function (b) { return b.dataset.id; });
+        fetch('/games/api/photos/approve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ approved: ids })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            var btn = document.getElementById('fpSave');
+            btn.textContent = d.ok ? 'Saved ✓' : 'Failed';
+            setTimeout(function () { btn.textContent = 'Save'; }, 1600);
+        })
+        .catch(function () { document.getElementById('fpSave').textContent = 'Failed'; });
+    }));
+
+    refresh();
+})();
+</script>
+{% endblock %}

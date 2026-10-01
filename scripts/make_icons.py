@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the KidMedia launcher icons (mipmap-*/ic_launcher[_round].png).
+"""Generate the FunForge launcher icons (mipmap-*/ic_launcher[_round].png).
 
 Drawn with PIL rather than shipped as binaries so the icon is reproducible and
 tweakable. Everything is drawn at 4x and downsampled, which is what keeps the

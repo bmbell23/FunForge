@@ -1,9 +1,13 @@
 services:
-  kidmedia:
+  funforge:
     build:
       context: .
       target: development
-    container_name: kidmedia
+    container_name: funforge
+    # Run tini as PID 1 so it reaps exited children. Without it uvicorn is PID 1,
+    # and the python3 processes the healthcheck spawns are never waited on --
+    # they accumulated 562 zombies between Jul 10 and Sep 9 2026.
+    init: true
     ports:
       - "8006:8006"
     volumes:
@@ -17,14 +21,14 @@ services:
       - /mnt/boston/media/kid-media/podcasts:/podcasts:rw
     environment:
       - PYTHONPATH=/app/src
-      - DATABASE_URL=sqlite:///./data/kid_media.db
+      - DATABASE_URL=sqlite:///./data/fun_forge.db
       - MUSIC_DIR=/music
       - PODCAST_DIR=/podcasts
       - HOST=0.0.0.0
       - PORT=8006
     restart: unless-stopped
     networks:
-      - kidmedia-network
+      - funforge-network
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8006/health')\""]
       interval: 30s
@@ -43,6 +47,6 @@ services:
           memory: 128M
 
 networks:
-  kidmedia-network:
+  funforge-network:
     driver: bridge
 

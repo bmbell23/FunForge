@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block header_nav %}
+<a href="/" class="back-button">⬅️ Home</a>
+{% endblock %}
+
+{% block content %}
+{# The picker, and the last screen with an easy way out: tapping a game commits
+   to it, and leaving costs a grown-up's PIN from then on. One tile per game, in
+   the same visual language as the home tiles. #}
+<div class="game-picker">
+    <a href="/games/cover-match/" class="game-card game-card-match">
+        <span class="game-card-icon">🃏</span>
+        <span class="game-card-text">Match the Covers</span>
+    </a>
+    {% if family_ready %}
+    <a href="/games/family-match/" class="game-card game-card-family">
+        <span class="game-card-icon">📸</span>
+        <span class="game-card-text">Match the Family</span>
+    </a>
+    {% endif %}
+</div>
+{% endblock %}

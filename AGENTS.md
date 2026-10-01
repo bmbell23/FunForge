@@ -1,4 +1,4 @@
-# AI Agent Guidelines for KidMedia
+# AI Agent Guidelines for FunForge
 
 ## 🚨 CRITICAL SYSTEM OPERATION RULES 🚨
 

@@ -10,10 +10,10 @@ def vname = System.getenv("VERSION_NAME") ?: ("0.0." + vcode)
 
 android {
     compileSdk 34
-    namespace 'com.kidmedia.app'
+    namespace 'com.funforge.app'
 
     defaultConfig {
-        applicationId "com.kidmedia.app"
+        applicationId "com.funforge.app"
         minSdk 24
         targetSdk 34
         versionCode vcode

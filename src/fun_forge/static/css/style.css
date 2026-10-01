@@ -1,0 +1,2152 @@
+/* FunForge - Kid-Friendly Touchscreen Styles */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Arial', 'Helvetica', sans-serif;
+    background: #f0f0f0;
+    color: #333;
+    min-height: 100vh;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    overflow-x: hidden;
+}
+
+.container {
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+/* Header */
+.header {
+    background: white;
+    padding: 12px 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 500;
+}
+
+.app-title {
+    font-size: 32px;
+    font-weight: bold;
+    color: #667eea;
+}
+
+.nav {
+    display: flex;
+    gap: 20px;
+}
+
+.nav-button {
+    background: #667eea;
+    color: white;
+    padding: 20px 40px;
+    border-radius: 15px;
+    text-decoration: none;
+    font-size: 28px;
+    font-weight: bold;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.nav-button:active {
+    transform: scale(0.95);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+/* Big Back Button */
+.back-button {
+    background: linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%);
+    color: white;
+    padding: 25px 50px;
+    border-radius: 20px;
+    text-decoration: none;
+    font-size: 42px;
+    font-weight: bold;
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.back-button:active {
+    transform: scale(0.95);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+}
+
+
+/* Main Content */
+.main-content {
+    background: transparent;
+    padding: 0;
+    min-height: calc(100vh - 60px);
+}
+
+.page-title {
+    font-size: 42px;
+    color: #667eea;
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+/* Dashboard */
+.dashboard {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 30px 20px 40px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 30px;
+    margin-bottom: 20px;
+    justify-items: center;
+}
+
+.stat-card {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    border-radius: 20px;
+    padding: 40px;
+    text-align: center;
+    color: white;
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s, box-shadow 0.2s;
+    min-height: 260px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.videos-card {
+    background: linear-gradient(135deg, #42a5f5 0%, #26c6da 100%);
+}
+
+.stat-icon {
+    font-size: 64px;
+    margin-bottom: 15px;
+}
+
+.stat-number {
+    font-size: 56px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.stat-label {
+    font-size: 28px;
+    opacity: 0.9;
+}
+
+/* Action Buttons */
+.action-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    flex-wrap: wrap;
+}
+
+.big-button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 40px 60px;
+    border-radius: 25px;
+    text-decoration: none;
+    font-size: 36px;
+    font-weight: bold;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    border: none;
+    cursor: pointer;
+}
+
+.big-button:active {
+    transform: scale(0.95);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.button-icon {
+    font-size: 48px;
+}
+
+.button-text {
+    font-size: 36px;
+}
+
+/* Album Grid */
+.album-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 30px;
+    margin-top: 30px;
+}
+
+.album-card {
+    background: white;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
+    transition: transform 0.2s, box-shadow 0.2s;
+    text-decoration: none;
+    color: inherit;
+}
+
+.album-card:active {
+    transform: scale(0.95);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+}
+
+.album-cover {
+    width: 100%;
+    aspect-ratio: 1;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.album-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.album-cover-placeholder {
+    font-size: 80px;
+    color: white;
+}
+
+.album-info {
+    padding: 20px;
+}
+
+.album-title {
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #333;
+}
+
+.album-artist {
+    font-size: 20px;
+    color: #666;
+}
+
+/* Album View */
+.album-view {
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+.album-header {
+    display: flex;
+    gap: 40px;
+    align-items: flex-start;
+}
+
+.album-cover-large {
+    width: 300px;
+    height: 300px;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.album-cover-large img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.album-cover-placeholder-large {
+    font-size: 120px;
+    color: white;
+}
+
+.album-details {
+    flex: 1;
+}
+
+.album-title-large {
+    font-size: 48px;
+    color: #667eea;
+    margin-bottom: 15px;
+}
+
+.album-artist-large {
+    font-size: 36px;
+    color: #666;
+    margin-bottom: 10px;
+}
+
+.album-year {
+    font-size: 28px;
+    color: #999;
+}
+
+/* Track List */
+.track-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.track-item {
+    background: #f8f9fa;
+    border-radius: 15px;
+    padding: 20px 30px;
+    display: flex;
+    align-items: center;
+    gap: 25px;
+    cursor: pointer;
+    transition: transform 0.2s, background 0.2s;
+}
+
+.track-item:active {
+    transform: scale(0.98);
+    background: #e9ecef;
+}
+
+.track-number {
+    font-size: 42px;
+    font-weight: bold;
+    width: 70px;
+    text-align: center;
+    border-radius: 10px;
+    padding: 10px;
+    color: white;
+}
+
+/* Colorful track numbers for easy identification */
+.track-number-0 { background: #FF6B6B; }
+.track-number-1 { background: #4ECDC4; }
+.track-number-2 { background: #45B7D1; }
+.track-number-3 { background: #FFA07A; }
+.track-number-4 { background: #98D8C8; }
+.track-number-5 { background: #F7DC6F; }
+.track-number-6 { background: #BB8FCE; }
+.track-number-7 { background: #85C1E2; }
+.track-number-8 { background: #F8B739; }
+.track-number-9 { background: #52BE80; }
+
+.track-info {
+    flex: 1;
+}
+
+.track-title {
+    font-size: 32px;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 5px;
+}
+
+.track-duration {
+    font-size: 24px;
+    color: #666;
+}
+
+.track-play-icon {
+    font-size: 48px;
+}
+
+/* Audio Player */
+.player {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    padding: 30px;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    z-index: 1000;
+}
+
+.player-info {
+    flex: 1;
+}
+
+.player-track-title {
+    font-size: 28px;
+    font-weight: bold;
+    color: #333;
+}
+
+.player-album-title {
+    font-size: 22px;
+    color: #666;
+}
+
+#audioPlayer {
+    flex: 2;
+    height: 60px;
+}
+
+.player-controls {
+    display: flex;
+    gap: 30px;
+    justify-content: center;
+}
+
+.player-button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 50%;
+    width: 120px;
+    height: 120px;
+    font-size: 56px;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.player-button:hover {
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+}
+
+.player-button:active {
+    transform: scale(0.95);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+/* Parent Mode Controls */
+.parent-mode-toggle {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 100;
+}
+
+.parent-mode-button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    border-radius: 12px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.parent-mode-button:hover {
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.3);
+}
+
+.parent-mode-button:active {
+    transform: scale(0.95);
+}
+
+.album-card-wrapper {
+    position: relative;
+}
+
+.parent-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 10;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.album-checkbox {
+    width: 30px;
+    height: 30px;
+    cursor: pointer;
+}
+
+.edit-button {
+    background: rgba(255, 255, 255, 0.95);
+    border: 2px solid #667eea;
+    border-radius: 50%;
+    width: 45px;
+    height: 45px;
+    font-size: 24px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s;
+}
+
+.edit-button:hover {
+    transform: scale(1.1);
+}
+
+.edit-button:active {
+    transform: scale(0.95);
+}
+
+.bulk-action-bar {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    border-radius: 15px;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.bulk-button {
+    background: white;
+    color: #333;
+    border: none;
+    padding: 15px 30px;
+    border-radius: 10px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.bulk-button:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.bulk-button:active {
+    transform: scale(0.95);
+}
+
+.bulk-button.delete-button {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ff5252 100%);
+    color: white;
+}
+
+.selected-count {
+    color: white;
+    font-size: 20px;
+    font-weight: bold;
+    padding: 10px 20px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.empty-message {
+    font-size: 32px;
+    color: #666;
+    margin-bottom: 40px;
+}
+
+/* ============ QUEUE SIDEBAR ============ */
+.queue-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 899;
+}
+.queue-overlay-visible { display: block; }
+
+.queue-sidebar {
+    position: fixed;
+    top: 0; left: -320px;
+    width: 320px;
+    height: 100vh;
+    background: white;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.2);
+    z-index: 900;
+    display: flex;
+    flex-direction: column;
+    transition: left 0.3s ease;
+}
+.queue-sidebar.queue-open { left: 0; }
+
+.queue-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 2px solid #eee;
+    flex-shrink: 0;
+}
+.queue-title { font-size: 24px; font-weight: bold; }
+.queue-close {
+    background: none; border: none;
+    font-size: 28px; cursor: pointer; padding: 8px;
+}
+
+.queue-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+}
+.queue-empty {
+    text-align: center; padding: 40px 20px;
+    font-size: 20px; color: #999;
+}
+
+.queue-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px; border-radius: 12px;
+    margin-bottom: 8px; background: #f8f9fa;
+    transition: opacity 0.2s;
+}
+.queue-item-past { opacity: 0.4; }
+.queue-item-playing {
+    background: #e8f5e9;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.queue-item-art {
+    width: 50px; height: 50px; border-radius: 8px;
+    overflow: hidden; flex-shrink: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+}
+.queue-item-art img { width: 100%; height: 100%; object-fit: cover; }
+
+.queue-item-info { flex: 1; min-width: 0; }
+.queue-item-title {
+    font-size: 16px; font-weight: bold;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.queue-item-kid { font-size: 13px; margin-top: 2px; }
+.queue-item-now { font-size: 20px; }
+.queue-remove {
+    background: none; border: none; font-size: 18px;
+    cursor: pointer; padding: 8px; color: #999;
+}
+.queue-remove:hover { color: #f44336; }
+
+.queue-actions {
+    padding: 15px; border-top: 2px solid #eee;
+    display: flex; justify-content: center; flex-shrink: 0;
+}
+
+.queue-clear-btn {
+    background: #f44336; color: white; border: none;
+    padding: 12px 24px; border-radius: 10px;
+    font-size: 16px; font-weight: bold; cursor: pointer;
+}
+
+/* ============ MUSIC MAIN AREA ============ */
+.music-main {
+    padding: 15px;
+    padding-bottom: 15px;
+    transition: background 0.4s ease;
+    min-height: 100vh;
+}
+.music-main.turn-0 { background: #CE93D8; }
+.music-main.turn-1 { background: #64B5F6; }
+.music-main.turn-done { background: #f5f5f5; }
+.music-main.turn-parent { background: #FFF9C4; }
+
+/* Hide the header bar on the music page */
+.music-main ~ .header,
+body:has(.music-main) .header { display: none; }
+
+/* ============ QUEUE LOCKED STATE ============ */
+.queue-locked-message {
+    text-align: center;
+    padding: 80px 20px;
+    grid-column: 1 / -1;
+}
+.locked-icon { font-size: 80px; margin-bottom: 20px; }
+.locked-text { font-size: 36px; font-weight: bold; color: #333; }
+.locked-subtext { font-size: 24px; color: #666; margin-top: 10px; }
+
+/* ============ TURN SWAP OVERLAY ============ */
+.turn-swap-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+.turn-swap-overlay.turn-swap-visible {
+    opacity: 1;
+}
+.turn-swap-content {
+    text-align: center;
+    animation: turnSwapPulse 0.8s ease-in-out infinite alternate;
+}
+.turn-swap-emoji {
+    font-size: 120px;
+    margin-bottom: 20px;
+}
+.turn-swap-name {
+    font-size: 56px;
+    font-weight: 900;
+    text-shadow: 0 3px 10px rgba(0,0,0,0.15);
+}
+@keyframes turnSwapPulse {
+    from { transform: scale(0.95); }
+    to { transform: scale(1.05); }
+}
+
+@media (max-width: 600px) {
+    .turn-swap-emoji { font-size: 80px; }
+    .turn-swap-name { font-size: 40px; }
+}
+
+/* ============ CONTROLS BAR ============ */
+.controls-bar {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 15px;
+    padding: 10px 0;
+}
+
+.queue-hamburger {
+    background: white; border: none;
+    width: 52px; height: 52px; border-radius: 14px;
+    font-size: 28px; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    display: flex;
+    align-items: center; justify-content: center;
+}
+.turn-indicator {
+    display: flex; align-items: center; gap: 12px;
+    flex: 1;
+}
+.turn-dot {
+    width: 24px; height: 24px; border-radius: 50%;
+    display: inline-block;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+.turn-name {
+    font-size: 26px; font-weight: 900;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.turn-counter {
+    display: flex; align-items: center; justify-content: center;
+    width: 52px; height: 52px; border-radius: 50%;
+    font-size: 32px; font-weight: 900; color: white;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.controls-right {
+    display: flex; gap: 8px; flex-shrink: 0;
+}
+.ctrl-btn {
+    background: rgba(255,255,255,0.85); border: none;
+    width: 44px; height: 44px; border-radius: 50%;
+    font-size: 20px; cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    transition: transform 0.15s;
+    display: flex; align-items: center; justify-content: center;
+}
+.ctrl-btn:active { transform: scale(0.9); }
+.ctrl-btn-parent {
+    opacity: 0.5;
+}
+.ctrl-btn-guest {
+    width: auto !important;
+    border-radius: 22px !important;
+    padding: 0 14px !important;
+    font-size: 15px !important;
+    font-weight: bold;
+    color: #333;
+    white-space: nowrap;
+    opacity: 0.85;
+}
+.ctrl-btn-guest:active { opacity: 1; }
+
+/* ============ GUEST MODAL ============ */
+.guest-modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 1200;
+    display: flex; align-items: center; justify-content: center;
+}
+.guest-modal {
+    background: #fff;
+    border-radius: 24px;
+    padding: 28px 24px 24px;
+    width: min(360px, 90vw);
+    display: flex; flex-direction: column; gap: 12px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.25);
+}
+.guest-modal-title {
+    font-size: 24px; font-weight: 800;
+    text-align: center; margin: 0;
+}
+.guest-name-label {
+    font-size: 14px; font-weight: 600; color: #555;
+}
+.guest-name-input {
+    border: 2px solid #ddd; border-radius: 12px;
+    padding: 10px 14px; font-size: 18px; width: 100%;
+    box-sizing: border-box;
+    outline: none;
+}
+.guest-name-input:focus { border-color: #43A047; }
+.guest-color-label {
+    font-size: 14px; font-weight: 600; color: #555; margin: 0;
+}
+.guest-color-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+}
+.guest-color-swatch {
+    width: 100%; aspect-ratio: 1;
+    border: none; border-radius: 50%;
+    font-size: 26px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.guest-color-swatch:active {
+    transform: scale(0.88);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+.guest-cancel-btn {
+    margin-top: 4px; padding: 12px;
+    border: 2px solid #ddd; border-radius: 12px;
+    background: #f5f5f5; font-size: 16px; font-weight: 600;
+    cursor: pointer; color: #555;
+}
+.guest-cancel-btn:active { background: #e0e0e0; }
+
+/* Queue kid header in picking phase */
+.queue-kid-header {
+    padding: 8px 14px; border-radius: 8px;
+    font-size: 15px; font-weight: bold;
+    margin: 8px 0 4px 0;
+}
+
+/* ============ SEARCH BAR ============ */
+.search-bar {
+    display: flex; gap: 10px; margin-bottom: 15px;
+}
+.search-bar input {
+    flex: 1; padding: 14px 20px;
+    border: 2px solid #ddd; border-radius: 14px;
+    font-size: 18px; outline: none;
+    -webkit-user-select: text; user-select: text;
+}
+.search-bar input:focus { border-color: #667eea; }
+.search-clear {
+    background: #eee; border: none;
+    width: 48px; border-radius: 12px;
+    font-size: 20px; cursor: pointer;
+}
+
+/* ============ SONG GRID (All Songs) ============ */
+.song-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 15px;
+}
+
+.song-tile {
+    background: white;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    position: relative;
+}
+.song-tile:active {
+    transform: scale(0.95);
+    box-shadow: 0 1px 5px rgba(0,0,0,0.1);
+}
+
+.song-tile-art {
+    width: 100%; aspect-ratio: 1;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex; align-items: center; justify-content: center;
+}
+.song-tile-art img { width: 100%; height: 100%; object-fit: cover; }
+.song-tile-placeholder { font-size: 48px; color: white; }
+
+.song-tile-info { padding: 10px 12px; }
+.song-tile-title {
+    font-size: 16px; font-weight: bold; color: #333;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.song-tile-artist {
+    font-size: 13px; color: #888; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.song-tile-parent-controls {
+    position: absolute; top: 8px; right: 8px;
+    display: flex; flex-direction: column; gap: 6px;
+}
+.song-play-now, .song-edit-btn, .song-add-queue {
+    background: rgba(255,255,255,0.9); border: none;
+    width: 36px; height: 36px; border-radius: 50%;
+    font-size: 18px; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    display: flex; align-items: center; justify-content: center;
+}
+.song-play-now:active, .song-edit-btn:active, .song-add-queue:active { transform: scale(0.9); }
+
+/* Song tile checkbox (parent mode selection) */
+.song-checkbox-label {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    z-index: 10;
+    cursor: pointer;
+    line-height: 0;
+}
+.song-checkbox {
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    accent-color: #F9A825;
+}
+.song-tile.parent-mode-tile {
+    outline: 2px solid rgba(249, 168, 37, 0.25);
+}
+.song-tile.parent-mode-tile:has(.song-checkbox:checked) {
+    outline: 3px solid #F9A825;
+    background: #FFF9C4;
+}
+
+/* ============ RESPONSIVE ============ */
+
+/* Desktop: show queue sidebar always, no overlay needed */
+@media (min-width: 1024px) {
+    .queue-sidebar {
+        left: 0 !important;
+        position: fixed;
+    }
+    .queue-close { display: none; }
+    .queue-overlay { display: none !important; }
+    .queue-hamburger { display: none; }
+
+    /* Only pages that actually carry a queue sidebar get pushed aside for it.
+       This used to be an unscoped `.main-content { margin-left: 320px }`, which
+       shoved the home page 320px to the right against an empty gutter -- the
+       sidebar it was making room for isn't on that page at all. */
+    body:has(.queue-sidebar) .main-content {
+        margin-left: 320px;
+    }
+
+    .queue-sidebar { height: 100vh; }
+}
+
+/* Tablet */
+@media (max-width: 1023px) {
+    .song-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 12px;
+    }
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+    .header { padding: 8px 12px; }
+    .app-title { font-size: 24px; }
+
+    .music-main { padding: 10px; }
+
+    .dashboard {
+        padding: 20px 12px 26px;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+    }
+
+    .stat-card {
+        padding: 20px 12px;
+        min-height: 180px;
+    }
+
+    .stat-icon { font-size: 44px; }
+    .stat-number { font-size: 36px; }
+    .stat-label { font-size: 20px; }
+
+    .song-grid {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 10px;
+    }
+    .song-tile-title { font-size: 14px; }
+    .song-tile-artist { font-size: 12px; }
+    .song-tile-info { padding: 8px 10px; }
+
+    .turn-name { font-size: 20px; }
+
+    .album-header {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+}
+
+/* Album grid responsive */
+@media (max-width: 1024px) {
+    .album-header {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+}
+
+@media (max-width: 768px) {
+    .nav-button {
+        padding: 15px 30px;
+        font-size: 24px;
+    }
+
+    .track-title { font-size: 28px; }
+    .track-number { font-size: 36px; width: 60px; }
+}
+
+/* ============ PARENT-MODE CARD CONTROLS ============ */
+
+/* Play button, tucked into the bottom-right corner of the cover.
+   It used to be a full-width bar centred over the artwork, which put it right
+   under a thumb aiming at the middle of the card — so opening an album to see
+   its tracks played the whole thing instead. Corners for the buttons, the whole
+   middle of the card for "show me what's in here". */
+.album-dp-overlay {
+    position: absolute;
+    bottom: 8px; right: 8px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+}
+.album-dp-play-btn {
+    background: #4CAF50; color: white; border: none;
+    border-radius: 50%; width: 56px; height: 56px;
+    font-size: 26px; cursor: pointer;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.4);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s;
+}
+/* "Add to queue" sits in the top-right corner of the cover, the same place the
+   ➕ sits on a song tile — one spot to learn, whichever grid you're looking at. */
+.album-queue-corner {
+    position: absolute; top: 8px; right: 8px; z-index: 5;
+    background: white; color: #667eea; border: none;
+    border-radius: 50%; width: 48px; height: 48px;
+    font-size: 26px; font-weight: bold; line-height: 1; cursor: pointer;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.25);
+    align-items: center; justify-content: center;
+    transition: transform 0.15s;
+}
+.album-dp-play-btn:active, .album-queue-corner:active { transform: scale(0.9); }
+
+/* Edit mode toggle button - active state */
+.ctrl-btn.edit-mode-active {
+    background: #F9A825 !important;
+    opacity: 1 !important;
+}
+
+/* album.html parent-mode per-track controls */
+.track-parent-controls {
+    display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+}
+.track-play-now-btn, .track-add-queue-btn {
+    border: none; border-radius: 50%;
+    width: 52px; height: 52px;
+    font-size: 24px; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s;
+}
+.track-play-now-btn { background: #4CAF50; color: white; }
+.track-add-queue-btn { background: #667eea; color: white; }
+.track-play-now-btn:active, .track-add-queue-btn:active { transform: scale(0.9); }
+
+/* ============ ARTIST GRID ============ */
+.artist-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 24px;
+    margin-top: 30px;
+}
+
+.artist-card-wrapper {
+    position: relative;
+}
+
+.artist-card {
+    background: white;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.artist-card:active {
+    transform: scale(0.95);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Artist cards reuse .album-cover for the square art area */
+.artist-info {
+    padding: 16px 18px 18px;
+    text-align: center;
+}
+.artist-name {
+    font-size: 22px;
+    font-weight: bold;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+}
+.artist-meta {
+    font-size: 15px;
+    color: #888;
+}
+
+@media (max-width: 1023px) {
+    .artist-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
+}
+@media (max-width: 600px) {
+    .artist-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+    .artist-name { font-size: 18px; }
+}
+
+/* Play album now button on album detail page */
+.play-album-now-btn {
+    background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+    color: white; border: none;
+    padding: 18px 30px; border-radius: 14px;
+    font-size: 22px; font-weight: bold;
+    cursor: pointer; margin-top: 15px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    display: block; width: 100%;
+}
+.play-album-now-btn:active { transform: scale(0.97); }
+
+/* ── Guest chips bar ─────────────────────────────────────────────────────── */
+.guest-chips-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.guest-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px 5px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+.guest-chip-remove {
+    background: rgba(0,0,0,0.25);
+    border: none;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    font-size: 11px;
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+    flex-shrink: 0;
+}
+.guest-chip-remove:hover { background: rgba(0,0,0,0.5); }
+
+/* ============ TAP-TO-PLAY OVERLAY ============ */
+.tap-to-play-btn {
+    position: fixed;
+    inset: 0;
+    z-index: 12000;
+    border: none;
+    background: rgba(0, 0, 0, 0.82);
+    color: #fff;
+    font-size: clamp(28px, 5vw, 56px);
+    font-weight: 900;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+    cursor: pointer;
+}
+
+.tap-to-play-btn:active {
+    background: rgba(0, 0, 0, 0.9);
+}
+
+/* ── Guest color modal — used swatches ───────────────────────────────────── */
+.guest-color-swatch.used {
+    opacity: 0.25;
+    cursor: not-allowed;
+    filter: grayscale(1);
+    transform: none !important;
+}
+.guest-color-swatch.used:hover { transform: none; box-shadow: none; }
+
+/* ============ NOW PLAYING SPLASH (locked / playing state) ============ */
+.now-playing-splash {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 30px 20px 20px;
+    gap: 18px;
+    text-align: center;
+    min-height: calc(100vh - 260px);
+}
+
+.splash-art {
+    width: min(380px, 78vw);
+    height: min(380px, 78vw);
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    animation: splashGlow 3s ease-in-out infinite;
+}
+.splash-art img { width: 100%; height: 100%; object-fit: cover; }
+.splash-art-placeholder { font-size: 110px; color: white; }
+
+.splash-title {
+    font-size: 28px;
+    font-weight: bold;
+    color: #333;
+    max-width: 500px;
+    line-height: 1.2;
+}
+.splash-artist {
+    font-size: 20px;
+    color: #666;
+}
+
+@keyframes splashGlow {
+    0%, 100% { box-shadow: 0 12px 40px rgba(0,0,0,0.25); }
+    50%       { box-shadow: 0 16px 56px rgba(102, 126, 234, 0.45); }
+}
+
+@media (max-width: 600px) {
+    .splash-title  { font-size: 22px; }
+    .splash-artist { font-size: 17px; }
+    .now-playing-splash { min-height: calc(100vh - 310px); }
+}
+
+
+/* ============ PARENT LOCK (global) ============ */
+/* One button, mounted by funforge-lock.js into .controls-right on the player
+   pages and into .header everywhere else. */
+.kid-lock-btn {
+    background: rgba(0, 0, 0, 0.12);
+    border: none;
+    border-radius: 16px;
+    min-width: 64px;
+    height: 64px;
+    font-size: 30px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s, transform 0.1s;
+}
+.kid-lock-btn:active { transform: scale(0.92); }
+.kid-lock-btn.kid-lock-open {
+    background: linear-gradient(135deg, #F9A825 0%, #F57F17 100%);
+    box-shadow: 0 3px 10px rgba(245, 127, 23, 0.45);
+}
+
+/* A thin banner along the top edge so it's obvious at a glance that the
+   grown-up controls are live — and that they stay live until you lock. */
+body.kid-unlocked::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 6px;
+    background: linear-gradient(90deg, #F9A825, #FF7043, #F9A825);
+    z-index: 20000;
+    pointer-events: none;
+}
+
+/* ============ PIN KEYPAD ============ */
+.pin-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 30000;
+    opacity: 0;
+    transition: opacity 0.15s;
+    padding: 20px;
+}
+.pin-overlay-visible { opacity: 1; }
+
+.pin-panel {
+    background: #fff;
+    border-radius: 28px;
+    padding: 28px 28px 24px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+    max-width: 380px;
+    width: 100%;
+}
+.pin-title {
+    font-size: 30px;
+    font-weight: bold;
+    text-align: center;
+    color: #444;
+    margin-bottom: 18px;
+}
+
+.pin-dots {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 24px;
+    height: 24px;
+}
+.pin-dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #ddd;
+    transition: background 0.12s, transform 0.12s;
+}
+.pin-dot-on { background: #667eea; transform: scale(1.12); }
+.pin-dots-bad { animation: pin-shake 0.35s; }
+.pin-dots-bad .pin-dot { background: #e53935; }
+@keyframes pin-shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-10px); }
+    75% { transform: translateX(10px); }
+}
+
+.pin-pad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+.pin-key {
+    /* Kid-friendly sizing rules apply to the parent UI too — this gets tapped
+       one-handed while holding a toddler. */
+    height: 80px;
+    font-size: 34px;
+    font-weight: bold;
+    border: none;
+    border-radius: 18px;
+    background: #f1f1f6;
+    color: #333;
+    cursor: pointer;
+    transition: background 0.1s, transform 0.08s;
+}
+.pin-key:active { transform: scale(0.93); background: #e2e2ea; }
+.pin-key-alt { background: #e6e6ee; color: #666; font-size: 28px; }
+
+/* ============ IN-PAGE ALBUM / ARTIST SHEET ============ */
+/* Browsing an album no longer navigates away, so the <audio> element — and the
+   music — survives. This is the panel that replaces that page. */
+.sheet-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 9500;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+.sheet-overlay.sheet-open { opacity: 1; }
+
+.sheet {
+    background: #fff;
+    width: 100%;
+    max-width: 760px;
+    max-height: 88vh;
+    border-radius: 28px 28px 0 0;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.3);
+    transform: translateY(24px);
+    transition: transform 0.2s;
+}
+.sheet-open .sheet { transform: translateY(0); }
+
+.sheet-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 20px 14px;
+    border-bottom: 2px solid #f0f0f0;
+}
+.sheet-art {
+    width: 84px; height: 84px;
+    border-radius: 14px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 40px;
+}
+.sheet-art img { width: 100%; height: 100%; object-fit: cover; }
+.sheet-titles { flex: 1; min-width: 0; }
+.sheet-title {
+    font-size: 28px; font-weight: bold; color: #333;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sheet-subtitle {
+    font-size: 20px; color: #777;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sheet-close {
+    background: #f1f1f6; border: none; border-radius: 50%;
+    width: 56px; height: 56px; font-size: 26px; color: #666;
+    cursor: pointer; flex-shrink: 0;
+}
+.sheet-close:active { transform: scale(0.92); }
+
+.sheet-actions {
+    display: flex; gap: 12px;
+    padding: 0 20px;
+}
+.sheet-actions:not(:empty) { padding: 14px 20px; }
+.sheet-btn {
+    flex: 1; height: 64px;
+    border: none; border-radius: 16px;
+    background: #ececf4; color: #333;
+    font-size: 22px; font-weight: bold; cursor: pointer;
+}
+.sheet-btn:active { transform: scale(0.97); }
+.sheet-btn-play {
+    background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
+    color: #fff;
+}
+
+.sheet-tracks {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 8px 12px 24px;
+}
+.sheet-track {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    /* 80px minimum touch target, per the kid-friendly rules in CLAUDE.md. */
+    min-height: 80px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    cursor: pointer;
+}
+.sheet-track:active { background: #f3f3f8; }
+.sheet-track-picked { opacity: 0.45; }
+.sheet-track-num {
+    width: 44px; height: 44px; flex-shrink: 0;
+    border-radius: 50%;
+    background: #ececf4; color: #666;
+    font-size: 20px; font-weight: bold;
+    display: flex; align-items: center; justify-content: center;
+}
+.sheet-track-info { flex: 1; min-width: 0; }
+.sheet-track-title {
+    font-size: 24px; font-weight: bold; color: #333;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sheet-track-sub {
+    font-size: 18px; color: #888;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sheet-track-mark { font-size: 30px; flex-shrink: 0; }
+.sheet-track-btns { display: flex; gap: 8px; flex-shrink: 0; }
+.sheet-mini {
+    width: 60px; height: 60px;
+    border: none; border-radius: 14px;
+    background: #ececf4; font-size: 24px; cursor: pointer;
+}
+.sheet-mini:active { transform: scale(0.9); }
+.sheet-note {
+    text-align: center;
+    padding: 50px 20px;
+    font-size: 30px;
+    font-weight: bold;
+    color: #444;
+}
+.sheet-note span { font-size: 22px; font-weight: normal; color: #888; }
+
+/* ============ CONTROLS BAR — NARROW SCREENS ============ */
+/* The turn indicator had flex:1 but no min-width:0, so it could never shrink
+   below its text and pushed the right-hand buttons off a phone screen (the bar
+   was ~30px wider than a Pixel viewport even before the lock button). */
+.turn-indicator { min-width: 0; }
+.turn-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* In the player pages' control row the lock button sits beside .ctrl-btn
+   circles, so it matches them; in a page header it keeps its larger pill. */
+.controls-right .kid-lock-btn {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    font-size: 20px;
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+.controls-right .kid-lock-btn.kid-lock-open {
+    background: linear-gradient(135deg, #F9A825 0%, #F57F17 100%);
+}
+
+@media (max-width: 600px) {
+    .controls-bar { gap: 8px; }
+    /* Collapse "👤 Add Guest" to just the icon — the label is what tipped the
+       row over the edge on a phone. */
+    .ctrl-btn-guest {
+        width: 44px !important;
+        padding: 0 !important;
+        border-radius: 50% !important;
+        font-size: 0 !important;
+    }
+    .ctrl-btn-guest::before { content: '👤'; font-size: 20px; }
+}
+
+/* Header: keep the title, back button and lock button on screen together. */
+.header { flex-wrap: wrap; gap: 10px; }
+
+@media (max-width: 600px) {
+    /* 42px text with 50px padding is a desktop-sized back button; on a phone it
+       alone was wider than the space left for the lock. */
+    .back-button {
+        padding: 14px 22px;
+        font-size: 26px;
+        gap: 8px;
+    }
+    .header .kid-lock-btn { min-width: 56px; height: 56px; font-size: 26px; }
+}
+
+/* ============ TRACK / EPISODE LISTS — NARROW SCREENS ============ */
+/* Same flex bug as the controls bar: .track-info had flex:1 with no min-width:0,
+   so a long title pushed the duration and play icon off the right of a phone. */
+.track-info { min-width: 0; }
+.track-title,
+.track-duration {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.track-number,
+.episode-emoji,
+.track-play-icon,
+.track-parent-controls { flex-shrink: 0; }
+
+@media (max-width: 600px) {
+    .track-item { padding: 14px 16px; gap: 14px; }
+    .track-number { font-size: 26px; width: 48px; padding: 6px; }
+    .track-title { font-size: 24px; }
+    .track-duration { font-size: 18px; }
+    .track-play-icon { font-size: 34px; }
+    .album-header { gap: 18px; }
+    .album-view { padding: 12px !important; gap: 18px; }
+}
+
+/* ============ HOME ============ */
+/* Four doors -- Songs, Stories, Videos, Games -- in a 2x2 grid and nothing else
+   on the page. The same 2x2 at every size on purpose: a three-year-old learns
+   where Songs lives by position, and a layout that reflows between phone and
+   tablet throws that away. Three tiles used to stack full-width with the icon
+   and label shoved against the left edge, which read as an accident. */
+.home {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: clamp(12px, 3vw, 24px);
+    padding: clamp(12px, 3vw, 24px);
+    padding-bottom: calc(clamp(12px, 3vw, 24px) + env(safe-area-inset-bottom));
+    /* Grow into whatever the header leaves, then stop: tiles should fill a phone
+       screen without becoming billboards on a desktop monitor. The centring is
+       done by .main-content below, which owns the leftover space. */
+    flex: 1;
+    width: 100%;
+    max-width: 880px;
+    max-height: 760px;
+}
+
+/* The home page is the one screen whose content is centred in the viewport
+   rather than flowing from the top, so it gets its own shell rules. */
+body:has(.home) .main-content {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.home-tile {
+    text-decoration: none;
+    color: #fff;
+    border-radius: clamp(20px, 5vw, 32px);
+    /* Icon above label, both centred -- in the middle of the tile at every size. */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: clamp(4px, 1.4vh, 14px);
+    padding: 10px;
+    min-height: 96px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    position: relative;
+    overflow: hidden;
+}
+.home-tile:active {
+    transform: scale(0.975);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+/* Soft highlight so the tiles read as objects rather than flat colour blocks. */
+.home-tile::after {
+    content: '';
+    position: absolute;
+    top: -60%;
+    right: -10%;
+    width: 70%;
+    height: 200%;
+    background: radial-gradient(closest-side, rgba(255, 255, 255, 0.22), transparent);
+    pointer-events: none;
+}
+
+.home-tile-songs   { background: linear-gradient(135deg, #7C4DFF 0%, #B388FF 100%); }
+.home-tile-stories { background: linear-gradient(135deg, #FF7043 0%, #FFB74D 100%); }
+.home-tile-videos  { background: linear-gradient(135deg, #26C6DA 0%, #4DD0E1 100%); }
+.home-tile-games   { background: linear-gradient(135deg, #43A047 0%, #9CCC65 100%); }
+
+/* vmin rather than vw so the icon and label stay in proportion to the tile in
+   both portrait and landscape -- a 2x2 cell scales with the shorter edge. */
+.home-tile-icon {
+    font-size: clamp(38px, 11vmin, 84px);
+    line-height: 1;
+    filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.22));
+}
+.home-tile-text {
+    font-size: clamp(22px, 5.5vmin, 44px);
+    font-weight: 900;
+    line-height: 1.05;
+    letter-spacing: -0.5px;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+/* ============ PAGE SHELL ============ */
+/* .main-content used to reserve `calc(100vh - 60px)`, but the header is 72px on
+   a phone (more with a back button), so every page carried ~12px of dead scroll
+   below the fold. Let the shell flex instead of guessing the header's height. */
+body {
+    display: flex;
+    flex-direction: column;
+}
+.container {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+.main-content {
+    flex: 1;
+    min-height: 0;
+}
+
+/* ============ PLAYER CARD ============ */
+/* Now-playing and the transport controls, in one surface. These used to be two
+   stacked strips — a flat black bar of emoji buttons above a white now-playing
+   row — which read as two unrelated widgets and looked like a debug toolbar.
+   The accent colour is set from JS to whoever's song is playing. */
+.queue-sidebar { background: #f5f6fa; }
+.queue-header { background: #fff; }
+
+.player-card {
+    --pc-accent: #7C4DFF;
+    flex-shrink: 0;
+    margin: 12px;
+    padding: 14px 16px 16px;
+    background: #fff;
+    border-radius: 22px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.09);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: opacity 0.2s;
+}
+
+.pc-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+.pc-art {
+    width: 62px; height: 62px;
+    border-radius: 14px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16);
+}
+.pc-art img { width: 100%; height: 100%; object-fit: cover; }
+
+.pc-meta { flex: 1; min-width: 0; }
+.pc-title {
+    font-size: 17px; font-weight: 700; color: #23242b;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pc-artist {
+    font-size: 13px; color: #7a7d89; margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Progress. Display only — deliberately not scrubbable, so a toddler can't
+   drag the song to the end by accident. */
+.pc-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: #ececf2;
+    overflow: hidden;
+}
+.pc-bar-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 3px;
+    background: var(--pc-accent);
+    transition: width 0.25s linear;
+}
+.pc-times {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #9a9dab;
+    margin-top: 5px;
+    font-variant-numeric: tabular-nums;
+}
+
+.pc-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    /* Stop is taken out of flow (below) so the prev/play/next trio stays
+       centred in the card rather than being shoved left by it. */
+    position: relative;
+    padding: 0 44px;
+}
+.pc-btn {
+    border: none;
+    background: #f1f2f7;
+    color: #3a3c46;
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.1s, background 0.15s;
+}
+.pc-btn:active { transform: scale(0.88); background: #e4e5ee; }
+
+.pc-btn-main {
+    width: 62px; height: 62px;
+    font-size: 26px;
+    color: #fff;
+    background: var(--pc-accent);
+    box-shadow: 0 5px 16px rgba(0, 0, 0, 0.22);
+}
+.pc-btn-main:active { background: var(--pc-accent); }
+
+/* Destructive, so it sits apart from the transport trio and stays quiet until
+   it's pressed. */
+.pc-btn-stop {
+    position: absolute;
+    right: 0;
+    width: 42px; height: 42px;
+    font-size: 17px;
+    background: transparent;
+    color: #c8ccd6;
+}
+.pc-btn-stop:active { background: #ffe9e9; color: #e53935; }
+
+/* Nothing queued: keep the controls in place (a parent still needs Stop to
+   clear a half-finished round) but stop pretending something is playing. */
+.player-card-idle .pc-art { background: #e9eaf1; color: #b9bcc9; }
+.player-card-idle .pc-title { color: #9a9dab; font-weight: 600; }
+.player-card-idle .pc-scrub { display: none; }
+.player-card-idle .pc-btn-main,
+.player-card-idle .pc-btn { opacity: 0.45; }
+.player-card-idle .pc-btn-stop { opacity: 1; }
+
+/* Queue items sit on the sidebar's light grey now, so they need their own
+   surface to stand off it. */
+.queue-item { background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); }
+
+/* ============ BULK ACTION BAR — NARROW SCREENS ============ */
+/* Three fixed-width children in a nowrap row: on a phone the "N selected" chip
+   hung 18px off the right edge in parent mode. */
+.bulk-action-bar { flex-wrap: wrap; }
+
+@media (max-width: 600px) {
+    .bulk-action-bar {
+        gap: 10px;
+        padding: 12px;
+        margin-bottom: 16px;
+    }
+    .bulk-button { padding: 12px 18px; font-size: 16px; }
+    .selected-count { font-size: 16px; padding: 8px 14px; }
+}
+
+/* ============ GAMES ============ */
+
+/* ---- picker ---- */
+/* Auto-fitting rather than a fixed 2x2 like the home page: home has a permanent
+   four and benefits from fixed positions, this list grows. */
+.game-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 320px));
+    justify-content: center;
+    align-content: center;
+    gap: clamp(12px, 3vw, 24px);
+    padding: clamp(16px, 4vw, 32px);
+    padding-bottom: calc(clamp(16px, 4vw, 32px) + env(safe-area-inset-bottom));
+    min-height: 60vh;
+}
+
+.game-card {
+    text-decoration: none;
+    color: #fff;
+    border-radius: clamp(20px, 5vw, 32px);
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: clamp(6px, 1.5vh, 16px);
+    padding: 16px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    position: relative;
+    overflow: hidden;
+}
+.game-card:active {
+    transform: scale(0.975);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+.game-card::after {
+    content: '';
+    position: absolute;
+    top: -60%; right: -10%;
+    width: 70%; height: 200%;
+    background: radial-gradient(closest-side, rgba(255, 255, 255, 0.22), transparent);
+    pointer-events: none;
+}
+.game-card-match { background: linear-gradient(135deg, #43A047 0%, #9CCC65 100%); }
+
+.game-card-icon {
+    font-size: clamp(48px, 12vmin, 88px);
+    line-height: 1;
+    filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.22));
+}
+.game-card-text {
+    font-size: clamp(24px, 5vmin, 38px);
+    font-weight: 900;
+    line-height: 1.05;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+/* ---- shell ---- */
+/* The shared header is hidden on game pages on purpose: it carries the ⬅️ Home
+   button, and a one-tap way out is precisely what a locked game must not have. */
+body:has(.game-shell) .header { display: none; }
+
+.game-shell {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(160deg, #1B2A4A 0%, #2E4372 100%);
+    /* The top padding is a strip for the exit button to live in. Without it the
+       ✖ floats over the top-right card, where it is both hard to hit and easy to
+       hit by accident — the two failure modes it is supposed to avoid. */
+    padding: calc(56px + env(safe-area-inset-top)) 8px calc(8px + env(safe-area-inset-bottom));
+}
+
+/* Small, low-contrast, and in a corner — a parent can always find it, a kid has
+   no reason to aim for it, and it costs a PIN even when hit. */
+.game-exit {
+    position: absolute;
+    top: calc(6px + env(safe-area-inset-top));
+    right: 6px;
+    z-index: 20;
+    width: 48px;
+    height: 48px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+.game-exit:active { background: rgba(255, 255, 255, 0.28); }
+
+.game-nudge {
+    position: absolute;
+    left: 50%;
+    top: calc(14px + env(safe-area-inset-top));
+    transform: translate(-50%, -12px);
+    z-index: 30;
+    background: rgba(0, 0, 0, 0.72);
+    color: #fff;
+    font-size: 20px;
+    font-weight: bold;
+    padding: 12px 20px;
+    border-radius: 999px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.game-nudge-visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+/* ---- cover match ---- */
+.cm-stage {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+}
+
+/* Tracks are a fixed square cell rather than 1fr. Album art is square, so 1fr
+   tracks on a phone gave 200x450 cells and object-fit:cover sliced the middle out
+   of every cover — which is exactly the part a kid matches on. The cell size is
+   measured in JS (the stage box is the only thing that knows both dimensions)
+   and handed back as --cm-cell. */
+.cm-board {
+    display: grid;
+    grid-template-columns: repeat(var(--cm-cols, 3), var(--cm-cell, 90px));
+    grid-template-rows: repeat(var(--cm-rows, 2), var(--cm-cell, 90px));
+    gap: clamp(6px, 2vmin, 16px);
+    justify-content: center;
+    align-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.cm-card {
+    position: relative;
+    border: none;
+    padding: 0;
+    background: none;
+    cursor: pointer;
+    perspective: 800px;
+    min-height: 0;
+    min-width: 0;
+}
+
+.cm-face {
+    position: absolute;
+    inset: 0;
+    border-radius: clamp(10px, 2.5vmin, 20px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    transition: transform 0.35s ease;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3);
+}
+
+.cm-back {
+    background: linear-gradient(135deg, #7C4DFF 0%, #B388FF 100%);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: clamp(28px, 9vmin, 64px);
+    transform: rotateY(0deg);
+}
+.cm-front {
+    background: #fff;
+    transform: rotateY(180deg);
+}
+.cm-front img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.cm-card-up .cm-back  { transform: rotateY(-180deg); }
+.cm-card-up .cm-front { transform: rotateY(0deg); }
+
+/* Matched pairs stay face up and stop responding, with a ring so the kid can see
+   they did something. Nothing is ever removed from the board -- a card vanishing
+   reads as "I broke it" at this age. */
+.cm-card-done { pointer-events: none; }
+.cm-card-done .cm-front {
+    outline: clamp(3px, 0.8vmin, 5px) solid #FFD54F;
+    outline-offset: -2px;
+    box-shadow: 0 0 18px rgba(255, 213, 79, 0.75);
+}
+
+.cm-oops {
+    grid-column: 1 / -1;
+    align-self: center;
+    text-align: center;
+    color: #fff;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.cm-cheer {
+    position: absolute;
+    inset: 0;
+    z-index: 25;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(90px, 34vmin, 260px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    transform: scale(0.5);
+}
+.cm-cheer-visible {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* ---- family photo approval (parent screen) ---- */
+.fp-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: #ffffffcc;
+    border-radius: 18px;
+    padding: 14px 18px;
+    margin-bottom: 18px;
+}
+.fp-count { font-size: 22px; font-weight: bold; color: #333; }
+.fp-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.fp-btn {
+    border: none;
+    border-radius: 12px;
+    background: #e0e0e0;
+    color: #333;
+    font-size: 20px;
+    font-weight: bold;
+    padding: 12px 18px;
+    cursor: pointer;
+}
+.fp-btn-go { background: #43A047; color: #fff; }
+.fp-btn:active { transform: scale(0.96); }
+
+.fp-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+}
+.fp-photo {
+    position: relative;
+    border: none;
+    padding: 0;
+    background: none;
+    border-radius: 14px;
+    overflow: hidden;
+    aspect-ratio: 1;
+    cursor: pointer;
+    /* Unapproved photos are dimmed rather than hidden: the parent is deciding,
+       so they have to be able to see what they're deciding about. */
+    filter: grayscale(0.7) brightness(0.72);
+    transition: filter 0.15s ease, outline-color 0.15s ease;
+    outline: 4px solid transparent;
+    outline-offset: -4px;
+}
+.fp-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fp-photo-on {
+    filter: none;
+    outline-color: #43A047;
+}
+.fp-person {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 15px;
+    font-weight: bold;
+    padding: 4px 6px;
+}
+.fp-tick {
+    position: absolute;
+    top: 6px; right: 6px;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: #43A047;
+    color: #fff;
+    font-size: 19px;
+    line-height: 30px;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+.fp-photo-on .fp-tick { opacity: 1; }
+
+.game-card-family { background: linear-gradient(135deg, #EC407A 0%, #FF8A65 100%); }
