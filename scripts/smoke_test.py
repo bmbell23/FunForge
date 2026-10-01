@@ -784,7 +784,7 @@ def run(page, errors):
     page.wait_for_timeout(300)
     ok("tiles are 120px+, square, and fit with no scrolling on phone and desktop sizes")
 
-    # Spy on speech so the test does not depend on the browser having a voice.
+    # Spy on speech: the animals must not talk (a robotic TTS voice over the noises, #18).
     has_speech = page.evaluate("""() => {
         if (!('speechSynthesis' in window)) return false;
         window.__spoken = []; window.__cancels = 0;
@@ -810,12 +810,8 @@ def run(page, errors):
     ok("tapping each animal sets it bouncing, and it settles again")
 
     if has_speech:
-        spoken = page.evaluate("window.__spoken")
-        assert spoken == list(expected.values()), f"spoken words were {spoken}"
-        assert page.evaluate("window.__cancels") >= 6, "a new tap did not cancel the previous utterance"
-        ok("each animal is spoken aloud, cutting off the last one")
-    else:
-        ok("speechSynthesis missing in this browser: the page must work without it")
+        assert page.evaluate("window.__spoken") == [], "an animal spoke with the TTS voice"
+        ok("the animals make their noises without a TTS voice on top")
 
     # Mashing: all six at once through separate pointers, then 60 more in a burst.
     taps_before = int(page.evaluate("document.getElementById('aniBoard').dataset.taps"))

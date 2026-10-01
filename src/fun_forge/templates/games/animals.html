@@ -1,9 +1,10 @@
 {% extends "games/_shell.html" %}
 
 {% block game %}
-{# Six huge animals. Tap one and it hops, the tile flashes, and it says its piece
-   twice over: a synthesised noise and a spoken "Moo!". Nothing to read, nothing to
-   get wrong, and every tap does something straight away. #}
+{# Six huge animals. Tap one and it hops, the tile flashes, and it makes its noise.
+   No speechSynthesis on purpose: on the phone it came out as a robotic announcer
+   reading "Moo!" over the animal (#18). Nothing to read, nothing to get wrong, and
+   every tap does something straight away. #}
 <div class="ani-stage">
     <div id="aniBoard" class="ani-board" data-taps="0" data-last="" aria-label="Animals">
         {% for key, emoji, label in [
@@ -22,10 +23,6 @@
 (function () {
     'use strict';
 
-    var SAYS = {
-        cow: 'Moo!', dog: 'Woof woof!', cat: 'Meow!',
-        pig: 'Oink oink!', duck: 'Quack quack!', lion: 'Roar!'
-    };
     var ANIM_MS = 700;
 
     var board = document.getElementById('aniBoard');
@@ -144,23 +141,6 @@
         };
     })();
 
-    // ---- speech ---------------------------------------------------------
-
-    var synth = ('speechSynthesis' in window && 'SpeechSynthesisUtterance' in window)
-        ? window.speechSynthesis : null;
-
-    function speak(text) {
-        if (!synth) return;
-        try {
-            synth.cancel();             // the previous animal stops mid-word
-            var u = new SpeechSynthesisUtterance(text);
-            u.rate = 0.9;
-            u.pitch = 1.4;
-            u.volume = 1;
-            synth.speak(u);
-        } catch (e) { /* speech is a nicety too */ }
-    }
-
     // ---- layout ---------------------------------------------------------
 
     /* Square tiles, as large as the stage allows. Two columns by three rows on a
@@ -201,7 +181,6 @@
         board.dataset.taps = taps;
         board.dataset.last = key;
         audio.say(key);
-        speak(SAYS[key]);
     }
 
     // Pointer events, one per finger: a toddler mashes with a whole hand, and
@@ -222,10 +201,7 @@
     // ---- shell hooks ----------------------------------------------------
 
     if (window.FunForgeGame) {
-        window.FunForgeGame.onPause(function () {
-            audio.hush();
-            if (synth) { try { synth.cancel(); } catch (e) {} }
-        });
+        window.FunForgeGame.onPause(function () { audio.hush(); });
         window.FunForgeGame.onResume(function () { audio.wake(); });
     }
 
