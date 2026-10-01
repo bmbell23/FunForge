@@ -1,0 +1,315 @@
+{% extends "games/_shell.html" %}
+
+{% block game %}
+{# Noughts and crosses with a dog and a cat. Two ways to play: two friends
+   passing the screen back and forth, or one kid against Robo. Robo is built so a
+   kid on their own can win or tie but never lose — it will not complete its own
+   three in a row. No scores, no timers: a finished round just deals a fresh board
+   in the same mode. #}
+<div class="ttt-stage">
+    <div id="tttBanner" class="ttt-banner" aria-live="polite">&nbsp;</div>
+    <div class="ttt-field">
+        <div id="tttBoard" class="ttt-board" data-state="choose" data-round="0" aria-label="Tic-Tac-Toe"></div>
+    </div>
+    <div id="tttChoice" class="ttt-choice">
+        <button id="tttFriends" class="ttt-choice-btn ttt-choice-friends" type="button">👫 Two friends</button>
+        <button id="tttRobo" class="ttt-choice-btn ttt-choice-robo" type="button">🤖 Play with Robo</button>
+    </div>
+    <div id="tttConfetti" class="ttt-confetti" aria-hidden="true"></div>
+</div>
+{% endblock %}
+
+{% block game_js %}
+<script>
+(function () {
+    'use strict';
+
+    var PIECE = { dog: '🐶', cat: '🐱' };
+    var LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+    var ROBO_DELAY = 600;
+    var CELEBRATE = 2500;
+
+    var board = document.getElementById('tttBoard');
+    var banner = document.getElementById('tttBanner');
+    var choice = document.getElementById('tttChoice');
+    var confetti = document.getElementById('tttConfetti');
+
+    var mode = null;            // 'friends' | 'robo'
+    var marks = [];             // 'dog' | 'cat' | null, per cell
+    var buttons = [];
+    var turn = 'dog';
+    var firstMover = 'cat';     // flipped before each deal, so friends start with the dog
+    var round = 0;
+    var pending = null;         // the one timed step in flight: { fn, ms, id }
+
+    // Tests set window.FF_TTT_FAST to run a whole round in a blink.
+    function scaled(ms) { return window.FF_TTT_FAST ? Math.max(1, Math.round(ms * 0.02)) : ms; }
+
+    function later(fn, ms) {
+        cancel();
+        pending = { fn: fn, ms: ms, id: null };
+        arm();
+    }
+    function arm() {
+        if (!pending || pending.id !== null) return;
+        var p = pending;
+        p.id = setTimeout(function () {
+            if (pending === p) pending = null;
+            p.fn();
+        }, scaled(p.ms));
+    }
+    function cancel() {
+        if (pending && pending.id !== null) clearTimeout(pending.id);
+        pending = null;
+    }
+
+    // ---- sound ----------------------------------------------------------
+    // Synthesised, like the other games: no audio files, and nothing to share
+    // focus with because arriving here already destroyed the player's <audio>.
+
+    var audio = (function () {
+        var ctx = null;
+        function context() {
+            if (ctx) return ctx;
+            var Ctor = window.AudioContext || window.webkitAudioContext;
+            if (!Ctor) return null;
+            try { ctx = new Ctor(); } catch (e) { return null; }
+            return ctx;
+        }
+        function tone(freq, delay, dur, vol) {
+            var c = context();
+            if (!c) return;
+            if (c.state === 'suspended') { try { c.resume(); } catch (e) { return; } }
+            try {
+                var osc = c.createOscillator();
+                var gain = c.createGain();
+                var t0 = c.currentTime + delay;
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.0001, t0);
+                gain.gain.linearRampToValueAtTime(vol, t0 + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+                osc.connect(gain);
+                gain.connect(c.destination);
+                osc.start(t0);
+                osc.stop(t0 + dur + 0.03);
+            } catch (e) { /* audio is a nicety, never a failure */ }
+        }
+        return {
+            dog:  function () { tone(520, 0, 0.10, 0.09); },
+            cat:  function () { tone(700, 0, 0.10, 0.09); },
+            win:  function () {
+                [523, 659, 784, 1047].forEach(function (f, i) { tone(f, i * 0.12, 0.34, 0.12); });
+            },
+            hush: function () { if (ctx) { try { ctx.suspend(); } catch (e) {} } },
+            wake: function () { if (ctx) { try { ctx.resume(); } catch (e) {} } }
+        };
+    })();
+
+    // ---- layout ---------------------------------------------------------
+
+    /* Square the cells against the field. CSS alone can't keep a grid square
+       when both the width and the height can bind, so measure and hand the size
+       back as --ttt-cell. */
+    function applyShape() {
+        var field = board.parentElement;
+        var cs = getComputedStyle(board);
+        var gap = parseFloat(cs.rowGap) || 0;
+        var side = Math.min(field.clientWidth, field.clientHeight) - gap * 2;
+        var cell = Math.floor(side / 3);
+        if (cell > 0) board.style.setProperty('--ttt-cell', cell + 'px');
+    }
+
+    window.addEventListener('resize', applyShape);
+    window.addEventListener('orientationchange', applyShape);
+
+    // ---- rules ----------------------------------------------------------
+
+    function other(who) { return who === 'dog' ? 'cat' : 'dog'; }
+
+    function lineFor(who) {
+        for (var i = 0; i < LINES.length; i++) {
+            var l = LINES[i];
+            if (marks[l[0]] === who && marks[l[1]] === who && marks[l[2]] === who) return l;
+        }
+        return null;
+    }
+
+    function wouldWin(cell, who) {
+        marks[cell] = who;
+        var w = !!lineFor(who);
+        marks[cell] = null;
+        return w;
+    }
+
+    function freeCells() {
+        var free = [];
+        for (var i = 0; i < 9; i++) if (!marks[i]) free.push(i);
+        return free;
+    }
+
+    function pickOne(list) { return list[Math.floor(Math.random() * list.length)]; }
+
+    /* Robo never completes its own line, so a kid playing alone can win or tie
+       but never lose. It does sometimes block, so winning takes a little
+       thinking — but not always, or nobody would ever win. Returns -1 when every
+       free cell would win for Robo (it can happen on the last move): the caller
+       then calls the round a tie rather than letting Robo win. */
+    function roboPick() {
+        var free = freeCells();
+        var safe = free.filter(function (c) { return !wouldWin(c, 'cat'); });
+        if (!safe.length) return -1;
+        var blocks = safe.filter(function (c) { return wouldWin(c, 'dog'); });
+        if (blocks.length && Math.random() < 0.6) return pickOne(blocks);
+        return pickOne(safe);
+    }
+
+    // ---- drawing --------------------------------------------------------
+
+    function setBanner(text, extra) {
+        banner.textContent = text;
+        banner.className = 'ttt-banner' + (extra ? ' ' + extra : '');
+    }
+
+    function showTurn() {
+        if (mode === 'robo') {
+            setBanner(turn === 'dog' ? 'Your turn! 🐶' : '🤖 Robo is thinking…');
+        } else {
+            setBanner(PIECE[turn] + "'s turn!");
+        }
+    }
+
+    function drawCell(i) {
+        var btn = buttons[i];
+        btn.innerHTML = '';
+        btn.removeAttribute('data-piece');
+        btn.classList.remove('ttt-cell-win');
+        if (marks[i]) {
+            btn.dataset.piece = marks[i];
+            var span = document.createElement('span');
+            span.className = 'ttt-piece';
+            span.textContent = PIECE[marks[i]];
+            btn.appendChild(span);
+        }
+    }
+
+    function build() {
+        board.innerHTML = '';
+        buttons = [];
+        for (var i = 0; i < 9; i++) {
+            (function (i) {
+                var btn = document.createElement('button');
+                btn.className = 'ttt-cell';
+                btn.type = 'button';
+                btn.setAttribute('aria-label', 'Square ' + (i + 1));
+                btn.addEventListener('click', function () { tap(i); });
+                buttons.push(btn);
+                board.appendChild(btn);
+            })(i);
+        }
+        applyShape();
+    }
+
+    function confettiBurst(bits) {
+        confetti.innerHTML = '';
+        for (var i = 0; i < 18; i++) {
+            var el = document.createElement('span');
+            el.className = 'ttt-bit';
+            el.textContent = pickOne(bits);
+            el.style.left = Math.floor(Math.random() * 92) + '%';
+            el.style.animationDelay = (Math.random() * 0.6).toFixed(2) + 's';
+            confetti.appendChild(el);
+        }
+    }
+
+    // ---- play -----------------------------------------------------------
+
+    function deal() {
+        cancel();
+        confetti.innerHTML = '';
+        marks = [null, null, null, null, null, null, null, null, null];
+        for (var i = 0; i < 9; i++) drawCell(i);
+        round++;
+        board.dataset.round = round;
+        board.removeAttribute('data-winner');
+        // The kid always goes first against Robo; friends take turns at going first.
+        firstMover = mode === 'robo' ? 'dog' : other(firstMover);
+        turn = firstMover;
+        if (mode === 'robo' && turn === 'cat') { startRobo(); return; }
+        board.dataset.state = 'play';
+        showTurn();
+    }
+
+    function startRobo() {
+        board.dataset.state = 'robo';
+        showTurn();
+        later(roboMove, ROBO_DELAY);
+    }
+
+    function roboMove() {
+        var cell = roboPick();
+        if (cell < 0) { finish(null); return; }
+        place(cell);
+    }
+
+    function tap(i) {
+        if (board.dataset.state !== 'play' || marks[i]) return;
+        place(i);
+    }
+
+    function place(i) {
+        marks[i] = turn;
+        drawCell(i);
+        audio[turn]();
+
+        var line = lineFor(turn);
+        if (line) { finish(line, turn); return; }
+        if (!freeCells().length) { finish(null); return; }
+
+        turn = other(turn);
+        if (mode === 'robo' && turn === 'cat') { startRobo(); return; }
+        board.dataset.state = 'play';
+        showTurn();
+    }
+
+    function finish(line, who) {
+        board.dataset.state = 'cheer';
+        if (line) {
+            board.dataset.winner = who;
+            line.forEach(function (i) { buttons[i].classList.add('ttt-cell-win'); });
+            setBanner(PIECE[who] + ' wins! 🎉', 'ttt-banner-win');
+            confettiBurst(['🎉', '⭐', '✨', '🎈', PIECE[who]]);
+        } else {
+            board.dataset.winner = 'tie';
+            setBanner('Everybody wins! 🌈', 'ttt-banner-tie');
+            confettiBurst(['🌈', '⭐', '✨', '💖', '🐶', '🐱']);
+        }
+        audio.win();
+        later(deal, CELEBRATE);
+    }
+
+    function start(chosen) {
+        mode = chosen;
+        choice.hidden = true;
+        deal();
+    }
+
+    document.getElementById('tttFriends').addEventListener('click', function () { start('friends'); });
+    document.getElementById('tttRobo').addEventListener('click', function () { start('robo'); });
+
+    // ---- shell hooks ----------------------------------------------------
+    // Pausing drops the timer, not the step: whatever was about to happen
+    // (Robo's move, the next deal) is re-armed from scratch on resume.
+
+    if (window.FunForgeGame) {
+        window.FunForgeGame.onPause(function () {
+            if (pending && pending.id !== null) { clearTimeout(pending.id); pending.id = null; }
+            audio.hush();
+        });
+        window.FunForgeGame.onResume(function () { arm(); audio.wake(); });
+    }
+
+    build();
+})();
+</script>
+{% endblock %}

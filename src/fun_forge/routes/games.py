@@ -148,6 +148,16 @@ async def family_match(request: Request):
     )
 
 
+@router.get("/tic-tac-toe/", response_class=HTMLResponse)
+async def tic_tac_toe(request: Request):
+    """Noughts and crosses with a dog and a cat: two friends, or a friendly Robo."""
+    return templates.TemplateResponse(
+        request,
+        "games/tictactoe.html",
+        {"title": "Tic-Tac-Toe"},
+    )
+
+
 @router.get("/photos/", response_class=HTMLResponse)
 async def family_photos_admin(request: Request):
     """Parent screen: tick which cached photos may appear in a game.
