@@ -69,6 +69,10 @@ fi
 
 mkdir -p "$DATA_DIR"
 cp "$SRC" "$DEST"
+# Builds from before the rename ignore version.json's "url" and always fetch
+# kidmedia.apk, so that name has to carry the new APK too, or an old phone keeps
+# downloading the old build and never gets off it.
+cp "$SRC" "$DATA_DIR/kidmedia.apk"
 
 # Written last so a phone can never see a new version.json before the APK.
 printf '{"versionCode": %s, "versionName": "%s", "url": "/download/funforge.apk"}\n' \

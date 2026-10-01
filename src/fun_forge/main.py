@@ -195,7 +195,9 @@ DATA_DIR = Path("/app/data") if Path("/app/data").is_dir() else Path("data")
 @app.get("/download/{filename}")
 async def download_file(filename: str):
     """Serve the Android APK and its version manifest. Nothing else in data/."""
-    if filename == "funforge.apk":
+    # kidmedia.apk is the name pre-rename builds hardcode for their self-update;
+    # build-apk.sh stages the current APK under both names.
+    if filename in ("funforge.apk", "kidmedia.apk"):
         media_type = "application/vnd.android.package-archive"
     elif filename == "version.json":
         media_type = "application/json"
