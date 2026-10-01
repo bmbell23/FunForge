@@ -158,6 +158,17 @@ async def tic_tac_toe(request: Request):
     )
 
 
+@router.get("/spell/", response_class=HTMLResponse)
+async def spell(request: Request):
+    """Spell It: a picture, its letters, and a garden that grows. The word list
+    lives in the template, like the other games' rules do."""
+    return templates.TemplateResponse(
+        request,
+        "games/spell.html",
+        {"title": "Spell It"},
+    )
+
+
 @router.get("/photos/", response_class=HTMLResponse)
 async def family_photos_admin(request: Request):
     """Parent screen: tick which cached photos may appear in a game.

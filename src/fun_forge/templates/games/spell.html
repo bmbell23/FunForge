@@ -1,0 +1,404 @@
+{% extends "games/_shell.html" %}
+
+{% block game %}
+{# A picture, its empty letter slots, and a handful of letter tiles. Tap the
+   right letter and it flies into the next slot and a flower grows in the garden;
+   tap a wrong one and it wiggles. Nothing is ever lost: no score, no timer, no
+   counter of mistakes, and the garden only ever gets fuller. Words start at three
+   letters and widen to five, then stay there. #}
+<div id="spellBoard" class="spell-stage" data-state="play" data-round="0" data-word="" data-filled="0" data-next="" aria-label="Spell It">
+    <div class="spell-picture-wrap">
+        <div id="spellPicture" class="spell-picture" aria-hidden="true"></div>
+        <button id="spellHear" class="spell-hear" type="button" aria-label="Hear the word">🔊</button>
+    </div>
+    <div id="spellSlots" class="spell-slots"></div>
+    <div id="spellGarden" class="spell-garden" data-count="0" aria-hidden="true"></div>
+    <div id="spellTiles" class="spell-tiles"></div>
+    <div id="spellConfetti" class="spell-confetti" aria-hidden="true"></div>
+</div>
+{% endblock %}
+
+{% block game_js %}
+<script>
+(function () {
+    'use strict';
+
+    // Concrete things a four-year-old can name from the picture alone. Nothing
+    // scary, nothing gross, nothing whose emoji could plausibly be two words.
+    var WORDS = [
+        // three letters
+        ['CAT', '🐱'], ['DOG', '🐶'], ['SUN', '☀️'], ['BUS', '🚌'], ['PIG', '🐷'],
+        ['COW', '🐮'], ['BEE', '🐝'], ['HAT', '🎩'], ['CAR', '🚗'], ['EGG', '🥚'],
+        ['FOX', '🦊'], ['BED', '🛏️'], ['KEY', '🔑'], ['HEN', '🐔'], ['OWL', '🦉'],
+        ['ANT', '🐜'], ['BUG', '🐛'], ['PIE', '🥧'], ['NUT', '🥜'], ['EAR', '👂'],
+        ['CAP', '🧢'], ['BOX', '📦'], ['ICE', '🧊'], ['EYE', '👁️'],
+        // four letters
+        ['FISH', '🐟'], ['FROG', '🐸'], ['DUCK', '🦆'], ['CAKE', '🎂'], ['MOON', '🌙'],
+        ['STAR', '⭐'], ['TREE', '🌳'], ['BOAT', '⛵'], ['BEAR', '🐻'], ['LION', '🦁'],
+        ['BALL', '⚽'], ['BOOK', '📖'], ['SHOE', '👟'], ['DRUM', '🥁'], ['CORN', '🌽'],
+        ['BIRD', '🐦'], ['CRAB', '🦀'], ['DEER', '🦌'], ['GOAT', '🐐'], ['KITE', '🪁'],
+        ['RING', '💍'], ['SOCK', '🧦'], ['SEAL', '🦭'], ['BELL', '🔔'], ['MILK', '🥛'],
+        ['ROSE', '🌹'], ['DOOR', '🚪'], ['BONE', '🦴'],
+        // five letters
+        ['APPLE', '🍎'], ['HORSE', '🐴'], ['TRAIN', '🚆'], ['PIZZA', '🍕'], ['SNAKE', '🐍'],
+        ['MOUSE', '🐭'], ['ROBOT', '🤖'], ['WHALE', '🐳'], ['HOUSE', '🏠'], ['TIGER', '🐯'],
+        ['CLOCK', '🕰️'], ['CLOUD', '☁️'], ['BREAD', '🍞'], ['GRAPE', '🍇'], ['LEMON', '🍋'],
+        ['SHEEP', '🐑'], ['PANDA', '🐼'], ['ZEBRA', '🦓'], ['HEART', '❤️'], ['CANDY', '🍬'],
+        ['PLANE', '✈️'], ['TRUCK', '🚚'], ['KOALA', '🐨'], ['CAMEL', '🐫'], ['CHAIR', '🪑']
+    ];
+
+    var ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+    // Letters a beginner mixes up. A distractor that is a mirror of a real letter
+    // would be a trick, not a distraction, so it is never dealt beside its twin.
+    var TWINS = { B: 'DPQ', D: 'BPQ', P: 'BDQ', Q: 'PBD', M: 'W', W: 'M', N: 'U', U: 'N', I: 'L', L: 'I' };
+
+    var GARDEN_SPOTS = 8;
+    var FLOWERS = ['🌸', '🌼', '🌻', '🌷', '🌺', '🌹', '💐'];
+    var STEP = 5;               // words completed before the next length joins in
+
+    var board = document.getElementById('spellBoard');
+    var picture = document.getElementById('spellPicture');
+    var slotsEl = document.getElementById('spellSlots');
+    var gardenEl = document.getElementById('spellGarden');
+    var tilesEl = document.getElementById('spellTiles');
+    var confetti = document.getElementById('spellConfetti');
+    var hearBtn = document.getElementById('spellHear');
+
+    var current = null;         // [word, emoji]
+    var slots = [];
+    var filled = 0;
+    var round = 0;
+    var completed = 0;          // words finished: this is the whole difficulty ladder
+    var planted = 0;            // correct letters ever: the garden's only state
+    var used = [];              // words dealt since the list last ran dry
+    var pending = null;         // the one timed step in flight: { fn, ms, id }
+
+    // Tests set window.FF_SPELL_FAST to run whole words in a blink.
+    function fast() { return !!window.FF_SPELL_FAST; }
+    function scaled(ms) { return fast() ? Math.max(1, Math.round(ms * 0.02)) : ms; }
+
+    function later(fn, ms) {
+        cancel();
+        pending = { fn: fn, ms: ms, id: null };
+        arm();
+    }
+    function arm() {
+        if (!pending || pending.id !== null) return;
+        var p = pending;
+        p.id = setTimeout(function () {
+            if (pending === p) pending = null;
+            p.fn();
+        }, scaled(p.ms));
+    }
+    function cancel() {
+        if (pending && pending.id !== null) clearTimeout(pending.id);
+        pending = null;
+    }
+
+    // ---- sound ----------------------------------------------------------
+    // Blips are synthesised, like the other games. Letter names and the word
+    // itself come from speechSynthesis where the device has it; a device without
+    // it just plays silently, which is fine because the picture does the work.
+
+    var audio = (function () {
+        var ctx = null;
+        function context() {
+            if (ctx) return ctx;
+            var Ctor = window.AudioContext || window.webkitAudioContext;
+            if (!Ctor) return null;
+            try { ctx = new Ctor(); } catch (e) { return null; }
+            return ctx;
+        }
+        function tone(freq, delay, dur, vol, type) {
+            var c = context();
+            if (!c) return;
+            if (c.state === 'suspended') { try { c.resume(); } catch (e) { return; } }
+            try {
+                var osc = c.createOscillator();
+                var gain = c.createGain();
+                var t0 = c.currentTime + delay;
+                osc.type = type || 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.0001, t0);
+                gain.gain.linearRampToValueAtTime(vol, t0 + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+                osc.connect(gain);
+                gain.connect(c.destination);
+                osc.start(t0);
+                osc.stop(t0 + dur + 0.03);
+            } catch (e) { /* audio is a nicety, never a failure */ }
+        }
+        var SCALE = [523, 587, 659, 784, 880];     // C major pentatonic: can't sound wrong
+        return {
+            good: function (i) {
+                tone(SCALE[i % SCALE.length], 0, 0.16, 0.10);
+                tone(SCALE[i % SCALE.length] * 2, 0.07, 0.12, 0.05);
+            },
+            boop: function () { tone(190, 0, 0.16, 0.07, 'triangle'); },
+            win:  function () {
+                [523, 659, 784, 1047].forEach(function (f, i) { tone(f, i * 0.12, 0.34, 0.12); });
+            },
+            hush: function () { if (ctx) { try { ctx.suspend(); } catch (e) {} } },
+            wake: function () { if (ctx) { try { ctx.resume(); } catch (e) {} } }
+        };
+    })();
+
+    var synth = ('speechSynthesis' in window && 'SpeechSynthesisUtterance' in window) ? window.speechSynthesis : null;
+
+    function say(text, rate) {
+        if (!synth || fast()) return;
+        try {
+            var u = new SpeechSynthesisUtterance(text);
+            u.rate = rate || 0.8;
+            u.pitch = 1.15;
+            synth.speak(u);
+        } catch (e) { /* silence is fine */ }
+    }
+    function hush() {
+        if (!synth) return;
+        try { synth.cancel(); } catch (e) { /* nothing to do */ }
+    }
+
+    // ---- layout ---------------------------------------------------------
+
+    /* Slots shrink to fit a five-letter word on a narrow phone. CSS can't see how
+       many slots there are, so measure the row and hand the size back. */
+    function applyShape() {
+        if (!current) return;
+        var n = current[0].length;
+        var gap = parseFloat(getComputedStyle(slotsEl).columnGap) || 0;
+        var room = slotsEl.clientWidth - gap * (n - 1);
+        var size = Math.floor(Math.min(112, room / n));
+        if (size > 0) board.style.setProperty('--spell-slot', size + 'px');
+    }
+
+    window.addEventListener('resize', applyShape);
+    window.addEventListener('orientationchange', applyShape);
+
+    // ---- choosing -------------------------------------------------------
+
+    function pickOne(list) { return list[Math.floor(Math.random() * list.length)]; }
+
+    function shuffle(list) {
+        for (var i = list.length - 1; i > 0; i--) {
+            var j = Math.floor(Math.random() * (i + 1));
+            var t = list[i]; list[i] = list[j]; list[j] = t;
+        }
+        return list;
+    }
+
+    /* Three-letter words first; after STEP of them four-letter words join the
+       mix, and after STEP more, five. That is the whole ladder — it stops there,
+       and a word already seen is not dealt again until the list has run dry. */
+    function lengthsOpen() {
+        var open = [3];
+        if (completed >= STEP) open.push(4);
+        if (completed >= STEP * 2) open.push(5);
+        return open;
+    }
+
+    function chooseWord() {
+        var open = lengthsOpen();
+        var pool = WORDS.filter(function (w) { return open.indexOf(w[0].length) >= 0; });
+        var fresh = pool.filter(function (w) { return used.indexOf(w[0]) < 0; });
+        if (!fresh.length) {
+            var last = current && current[0];
+            used = last ? [last] : [];
+            fresh = pool.filter(function (w) { return used.indexOf(w[0]) < 0; });
+        }
+        var w = pickOne(fresh);
+        used.push(w[0]);
+        return w;
+    }
+
+    /* The word's own letters, each once — a tile is never used up, so BALL's L
+       can be tapped twice — plus enough distractors to make 6 to 8 tiles. */
+    function tilesFor(word) {
+        var own = [];
+        word.split('').forEach(function (ch) { if (own.indexOf(ch) < 0) own.push(ch); });
+        var total = Math.min(8, Math.max(6, own.length + 3));
+        var banned = {};
+        own.forEach(function (ch) {
+            banned[ch] = true;
+            (TWINS[ch] || '').split('').forEach(function (t) { banned[t] = true; });
+        });
+        var spare = shuffle(ALPHABET.filter(function (ch) { return !banned[ch]; }));
+        var tiles = own.slice();
+        while (tiles.length < total && spare.length) tiles.push(spare.pop());
+        return shuffle(tiles);
+    }
+
+    // ---- drawing --------------------------------------------------------
+
+    function markNext() {
+        slots.forEach(function (s, i) {
+            s.classList.toggle('spell-slot-next', i === filled);
+        });
+        board.dataset.filled = filled;
+        board.dataset.next = current && filled < current[0].length ? current[0][filled] : '';
+    }
+
+    function buildGarden() {
+        gardenEl.innerHTML = '';
+        for (var i = 0; i < GARDEN_SPOTS; i++) {
+            var spot = document.createElement('span');
+            spot.className = 'spell-spot';
+            spot.textContent = '🌱';
+            gardenEl.appendChild(spot);
+        }
+    }
+
+    /* One more flower per right letter, in the next spot along. When the strip is
+       full it starts replacing seedlings-turned-flowers with fresh ones — it only
+       ever gets prettier, never emptier. */
+    function grow() {
+        var spot = gardenEl.children[planted % GARDEN_SPOTS];
+        spot.textContent = FLOWERS[planted % FLOWERS.length];
+        spot.classList.remove('spell-spot-bloom');
+        void spot.offsetWidth;                       // restart the animation
+        spot.classList.add('spell-spot-bloom');
+        planted++;
+        gardenEl.dataset.count = planted;
+    }
+
+    function confettiBurst(bits) {
+        confetti.innerHTML = '';
+        for (var i = 0; i < 18; i++) {
+            var el = document.createElement('span');
+            el.className = 'spell-bit';
+            el.textContent = pickOne(bits);
+            el.style.left = Math.floor(Math.random() * 92) + '%';
+            el.style.animationDelay = (Math.random() * 0.6).toFixed(2) + 's';
+            confetti.appendChild(el);
+        }
+    }
+
+    /* The tapped tile's letter flies to its slot. The slot's own letter is held
+       back by CSS until the flight is nearly done, so there is never two of it. */
+    function fly(tile, slot) {
+        if (!tile.animate) return;
+        try {
+            var a = tile.getBoundingClientRect();
+            var b = slot.getBoundingClientRect();
+            var ghost = document.createElement('span');
+            ghost.className = 'spell-flyer';
+            ghost.textContent = tile.dataset.letter;
+            ghost.style.left = a.left + 'px';
+            ghost.style.top = a.top + 'px';
+            ghost.style.width = a.width + 'px';
+            ghost.style.height = a.height + 'px';
+            document.body.appendChild(ghost);
+            var dx = (b.left + b.width / 2) - (a.left + a.width / 2);
+            var dy = (b.top + b.height / 2) - (a.top + a.height / 2);
+            var anim = ghost.animate([
+                { transform: 'translate(0, 0) scale(1)' },
+                { transform: 'translate(' + dx + 'px,' + dy + 'px) scale(' + (b.width / a.width).toFixed(2) + ')' }
+            ], { duration: 300, easing: 'ease-in', fill: 'forwards' });
+            anim.onfinish = function () { ghost.remove(); };
+            anim.oncancel = function () { ghost.remove(); };
+        } catch (e) { /* the letter still lands in its slot */ }
+    }
+
+    // ---- play -----------------------------------------------------------
+
+    function deal() {
+        cancel();
+        hush();
+        confetti.innerHTML = '';
+        current = chooseWord();
+        filled = 0;
+        round++;
+        board.dataset.round = round;
+        board.dataset.word = current[0];
+        board.dataset.state = 'play';
+        picture.textContent = current[1];
+        picture.classList.remove('spell-picture-pop');
+        void picture.offsetWidth;
+        picture.classList.add('spell-picture-pop');
+
+        slotsEl.innerHTML = '';
+        slots = current[0].split('').map(function () {
+            var s = document.createElement('div');
+            s.className = 'spell-slot';
+            slotsEl.appendChild(s);
+            return s;
+        });
+
+        tilesEl.innerHTML = '';
+        var letters = tilesFor(current[0]);
+        tilesEl.dataset.cols = letters.length <= 6 ? 3 : 4;
+        letters.forEach(function (ch) {
+            var btn = document.createElement('button');
+            btn.className = 'spell-tile';
+            btn.type = 'button';
+            btn.dataset.letter = ch;
+            btn.textContent = ch;
+            btn.setAttribute('aria-label', 'Letter ' + ch);
+            btn.addEventListener('click', function () { tap(btn); });
+            tilesEl.appendChild(btn);
+        });
+
+        markNext();
+        applyShape();
+    }
+
+    function tap(tile) {
+        if (board.dataset.state !== 'play') return;
+        var ch = tile.dataset.letter;
+        hush();
+        say(ch, 0.8);
+        if (ch !== current[0][filled]) {
+            audio.boop();
+            tile.classList.remove('spell-tile-wiggle');
+            void tile.offsetWidth;
+            tile.classList.add('spell-tile-wiggle');
+            return;
+        }
+        var slot = slots[filled];
+        slot.textContent = ch;
+        slot.classList.add('spell-slot-filled');
+        fly(tile, slot);
+        audio.good(filled);
+        grow();
+        filled++;
+        markNext();
+        if (filled === current[0].length) finish();
+    }
+
+    function finish() {
+        board.dataset.state = 'cheer';
+        completed++;
+        slots.forEach(function (s) { s.classList.add('spell-slot-win'); });
+        confettiBurst(['🎉', '⭐', '✨', '🦋', '🌸', current[1]]);
+        audio.win();
+        // "C… A… T… CAT!" — spell it, then say it, slowly.
+        hush();
+        current[0].split('').forEach(function (ch) { say(ch, 0.6); });
+        say(current[0], 0.6);
+        later(deal, 2400 + 300 * current[0].length);
+    }
+
+    hearBtn.addEventListener('click', function () {
+        if (board.dataset.state !== 'play' || !current) return;
+        hush();
+        say(current[0], 0.65);
+    });
+
+    // ---- shell hooks ----------------------------------------------------
+    // Pausing drops the timer and the voice, not the step: the next deal is
+    // re-armed from scratch on resume.
+
+    if (window.FunForgeGame) {
+        window.FunForgeGame.onPause(function () {
+            if (pending && pending.id !== null) { clearTimeout(pending.id); pending.id = null; }
+            hush();
+            audio.hush();
+        });
+        window.FunForgeGame.onResume(function () { arm(); audio.wake(); });
+    }
+
+    buildGarden();
+    deal();
+})();
+</script>
+{% endblock %}

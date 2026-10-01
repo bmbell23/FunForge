@@ -478,6 +478,154 @@ def run(page, errors):
     assert not errors, "JS errors in Tic-Tac-Toe: " + "; ".join(errors)
     ok("no JS errors while playing")
 
+    # ---- spell it ------------------------------------------------------------
+    section("Spell It (a picture, its letters, a garden that only grows)")
+    page.evaluate("localStorage.removeItem('funforge_unlocked')")
+    go("/games/")
+    assert page.locator(".game-card-spell").count() == 1, "the picker has no Spell It tile"
+    assert "Spell It" in page.locator(".game-card-spell").inner_text(), "tile is mislabelled"
+    ok("the picker shows the Spell It tile")
+
+    errors.clear()
+    page.click(".game-card-spell")
+    page.wait_for_selector(".spell-tile")
+    page.wait_for_timeout(500)
+    assert "/games/spell/" in page.url, f"tile went to {page.url}"
+    assert page.evaluate("getComputedStyle(document.querySelector('.header')).display") == "none", \
+        "the shared header is visible inside Spell It"
+    board = page.locator("#spellBoard")
+    word = board.get_attribute("data-word")
+    assert len(word) == 3, f"the first word should be three letters, got {word!r}"
+    assert page.locator(".spell-slot").count() == 3, "one slot per letter"
+    ok(f"the page loads on a three-letter word ({word})")
+
+    dims = page.evaluate("""() => {
+        const t = [...document.querySelectorAll('.spell-tile')];
+        const r = t.map(e => e.getBoundingClientRect());
+        return {
+            n: t.length,
+            w: Math.min(...r.map(x => x.width)),
+            h: Math.min(...r.map(x => x.height)),
+            font: Math.min(...t.map(e => parseFloat(getComputedStyle(e).fontSize))),
+            hear: document.getElementById('spellHear').getBoundingClientRect().width,
+            over: document.documentElement.scrollWidth - innerWidth,
+            tall: document.body.scrollHeight - innerHeight,
+        };
+    }""")
+    assert 6 <= dims["n"] <= 8, f"{dims['n']} letter tiles — should be 6 to 8, not the alphabet"
+    assert dims["w"] >= 80 and dims["h"] >= 80, f"tiles are only {dims['w']}x{dims['h']}"
+    assert dims["font"] >= 32, f"tile font is {dims['font']}px"
+    assert dims["hear"] >= 80, f"the 🔊 button is {dims['hear']}px wide"
+    assert dims["over"] <= 0 and dims["tall"] <= 0, f"the page scrolls: {dims}"
+    ok(f"{dims['n']} letter tiles, 80px+ with a {dims['font']:.0f}px font; nothing scrolls")
+
+    for _ in range(4):
+        page.go_back()
+        page.wait_for_timeout(250)
+    assert "/games/spell/" in page.url, f"Back escaped Spell It — now at {page.url}"
+    ok("Back can't leave Spell It either")
+
+    def state():
+        return page.evaluate("""() => { const b = document.getElementById('spellBoard');
+            return { word: b.dataset.word, filled: +b.dataset.filled, next: b.dataset.next,
+                     state: b.dataset.state, round: +b.dataset.round,
+                     garden: +document.getElementById('spellGarden').dataset.count }; }""")
+
+    def tap_letter(ch):
+        page.locator(f'.spell-tile[data-letter="{ch}"]').click()
+
+    # A wrong letter: nothing fills, nothing is lost, the tile just wiggles.
+    before = state()
+    wrong = page.evaluate("""() => { const b = document.getElementById('spellBoard');
+        const t = [...document.querySelectorAll('.spell-tile')].find(e => e.dataset.letter !== b.dataset.next);
+        return t.dataset.letter; }""")
+    tap_letter(wrong)
+    page.wait_for_timeout(100)
+    after = state()
+    assert after == before, f"a wrong letter changed the board: {before} -> {after}"
+    assert page.locator(".spell-tile-wiggle").count() == 1, "the wrong tile did not wiggle"
+    assert page.locator(".spell-slot-filled").count() == 0, "a wrong letter filled a slot"
+    ok("a wrong letter wiggles and changes nothing")
+
+    # Right letters in order: each fills the next slot and grows a flower.
+    word = before["word"]
+    for i, ch in enumerate(word[:-1]):
+        tap_letter(ch)
+        st = state()
+        assert st["filled"] == i + 1 and st["garden"] == i + 1, f"after {ch}: {st}"
+    slot_text = page.eval_on_selector_all(".spell-slot", "els => els.map(e => e.textContent)")
+    assert slot_text == list(word[:-1]) + [""], f"slots read {slot_text}"
+    ok("right letters fill the slots in order, one flower each")
+
+    tap_letter(word[-1])
+    assert state()["state"] == "cheer", "the finished word did not celebrate"
+    assert page.locator(".spell-bit").count() > 0, "no confetti"
+    page.locator(".spell-tile").first.click()      # during the celebration: ignored
+    assert state()["filled"] == len(word), "a tap during the celebration changed the board"
+    ok("a finished word celebrates with confetti, and taps meanwhile are ignored")
+
+    page.wait_for_function("document.getElementById('spellBoard').dataset.round === '2'", timeout=8000)
+    st = state()
+    assert st["state"] == "play" and st["filled"] == 0, f"the next word was not dealt fresh: {st}"
+    assert st["garden"] == len(word), "the garden lost flowers between words"
+    ok("about three seconds later the next word is dealt; the garden keeps its flowers")
+
+    # Ten words, fast-forwarded, tapping the right letters: no errors, and the
+    # ladder widens (3 letters, then 4 joins after 5 words, then 5 after 10).
+    errors.clear()
+    result = page.evaluate("""async () => {
+        window.FF_SPELL_FAST = true;
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const b = document.getElementById('spellBoard');
+        const lens = [];
+        for (let n = 0; n < 15; n++) {
+            const round = b.dataset.round;
+            const word = b.dataset.word;
+            lens.push(word.length);
+            for (const ch of word) {
+                const t = [...document.querySelectorAll('.spell-tile')].find(e => e.dataset.letter === ch);
+                if (!t) throw new Error('no tile for ' + ch + ' in ' + word);
+                t.click();
+            }
+            if (b.dataset.state !== 'cheer') throw new Error(word + ' did not complete');
+            for (let g = 0; b.dataset.round === round; g++) {
+                if (g > 2000) throw new Error('no new word after ' + word);
+                await sleep(3);
+            }
+        }
+        return lens;
+    }""")
+    # The page was already one word in, so word i is dealt after i + 1 completions.
+    assert all(n == 3 for n in result[:4]), f"early words should be 3 letters: {result}"
+    assert max(result[4:9]) <= 4, f"five-letter words came too early: {result}"
+    assert max(result) <= 5, f"words longer than five: {result}"
+    ok(f"15 words completed fast; lengths {''.join(map(str, result))}")
+
+    # Five-letter words at phone size: nothing overflows sideways.
+    for _ in range(40):
+        if len(page.get_attribute("#spellBoard", "data-word")) == 5:
+            break
+        word = page.get_attribute("#spellBoard", "data-word")
+        for ch in word:
+            tap_letter(ch)
+        page.wait_for_function("document.getElementById('spellBoard').dataset.state === 'play'", timeout=3000)
+    word = page.get_attribute("#spellBoard", "data-word")
+    assert len(word) == 5, "never dealt a five-letter word after ten completed"
+    fit = page.evaluate("""() => {
+        const rs = [...document.querySelectorAll('.spell-slot')].map(e => e.getBoundingClientRect());
+        return { over: document.documentElement.scrollWidth - innerWidth,
+                 left: Math.min(...rs.map(r => r.left)), right: Math.max(...rs.map(r => r.right)),
+                 w: innerWidth, slot: rs[0].width,
+                 tiles: [...document.querySelectorAll('.spell-tile')].every(e => {
+                     const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }) };
+    }""")
+    assert fit["over"] <= 0 and fit["left"] >= 0 and fit["right"] <= fit["w"] and fit["tiles"], \
+        f"a five-letter word overflows the phone: {fit}"
+    ok(f"a five-letter word ({word}) fits the phone: slots {fit['slot']:.0f}px wide, no sideways scroll")
+
+    assert not errors, "JS errors in Spell It: " + "; ".join(errors)
+    ok("no JS errors while playing")
+
     # ---- player card --------------------------------------------------------
     section("Player card")
     page.evaluate("localStorage.setItem('funforge_unlocked','true')")
