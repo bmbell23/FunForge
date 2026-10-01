@@ -13,7 +13,11 @@ android {
     namespace 'com.funforge.app'
 
     defaultConfig {
-        applicationId "com.funforge.app"
+        // Still the pre-rename id, on purpose. Android treats a new applicationId
+        // as a different app, so the self-updater would install a second FunForge
+        // beside the old one instead of updating it. Nobody ever sees this string;
+        // the launcher shows app_name.
+        applicationId "com.kidmedia.app"
         minSdk 24
         targetSdk 34
         versionCode vcode
