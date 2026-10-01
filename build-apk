@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Rebuild the Android APK after a merge to main. Run by the deploy reconciler
+# (agent-bus thread 017); safe to run by hand.
+#
+# Exit 0  = built; the last stdout line is "<versionName> <download URL>".
+# Exit 75 = nothing to rebuild. The app is a WebView shell around the live
+#           server, so web changes reach the phone without a new APK — only the
+#           inputs below do.
+# Anything else = the build failed.
+#
+# Never writes a tracked file: the APK, version.json and the stamp all live in
+# data/, which is gitignored. A dirty clone parks the reconciler on this repo.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$REPO_ROOT"
+
+# Run over ssh with no login shell, so don't rely on the profile.
+export ANDROID_HOME="${ANDROID_HOME:-/home/brandon/android-sdk}"
+export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
+
+# Everything that ends up in the APK. A commit that changes none of these
+# gets the same APK, so building it again would only make the phone nag.
+INPUTS=(android build-apk.sh build-apk scripts/make_icons.py)
+FINGERPRINT="$(for p in "${INPUTS[@]}"; do git rev-parse "HEAD:$p"; done | sha1sum | cut -d' ' -f1)"
+STAMP="data/apk-built-from"
+
+if [ -f data/funforge.apk ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$FINGERPRINT" ]; then
+    echo "APK inputs unchanged since the last build; nothing to rebuild."
+    exit 75
+fi
+
+# The build's own chatter goes to stderr so our last stdout line stays the result.
+./build-apk.sh >&2
+
+if [ -n "$(git status --porcelain)" ]; then
+    echo "❌ The build left tracked files modified:" >&2
+    git status --porcelain >&2
+    exit 1
+fi
+
+echo "$FINGERPRINT" > "$STAMP"
+VERSION_NAME="$(sed -n 's/.*"versionName"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' data/version.json)"
+echo "$VERSION_NAME http://100.69.184.113:8006/download/funforge.apk"
