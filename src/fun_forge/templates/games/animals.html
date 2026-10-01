@@ -1,0 +1,235 @@
+{% extends "games/_shell.html" %}
+
+{% block game %}
+{# Six huge animals. Tap one and it hops, the tile flashes, and it says its piece
+   twice over: a synthesised noise and a spoken "Moo!". Nothing to read, nothing to
+   get wrong, and every tap does something straight away. #}
+<div class="ani-stage">
+    <div id="aniBoard" class="ani-board" data-taps="0" data-last="" aria-label="Animals">
+        {% for key, emoji, label in [
+            ('cow', '🐮', 'Cow'), ('dog', '🐶', 'Dog'), ('cat', '🐱', 'Cat'),
+            ('pig', '🐷', 'Pig'), ('duck', '🦆', 'Duck'), ('lion', '🦁', 'Lion')] %}
+        <button class="ani-tile ani-{{ key }}" type="button" data-animal="{{ key }}" aria-label="{{ label }}">
+            <span class="ani-face">{{ emoji }}</span>
+        </button>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block game_js %}
+<script>
+(function () {
+    'use strict';
+
+    var SAYS = {
+        cow: 'Moo!', dog: 'Woof woof!', cat: 'Meow!',
+        pig: 'Oink oink!', duck: 'Quack quack!', lion: 'Roar!'
+    };
+    var ANIM_MS = 700;
+
+    var board = document.getElementById('aniBoard');
+    var taps = 0;
+
+    // ---- sound ----------------------------------------------------------
+    // Synthesised, like the other games: no audio files, and nothing to share
+    // focus with because arriving here already destroyed the player's <audio>.
+    // Each animal is one or two oscillators through a filter, shaped enough to
+    // be recognisable; the spoken word does the rest.
+
+    var audio = (function () {
+        var ctx = null;
+        var current = null;         // master gain of the sound in flight
+        function context() {
+            if (ctx) return ctx;
+            var Ctor = window.AudioContext || window.webkitAudioContext;
+            if (!Ctor) return null;
+            try { ctx = new Ctor(); } catch (e) { return null; }
+            return ctx;
+        }
+
+        /* One voice into `out`: a pitch path ([seconds, hz] pairs), an optional
+           filter and an optional wobble (vibrato) on the pitch. */
+        function voice(c, out, o) {
+            var t0 = c.currentTime + (o.delay || 0);
+            var osc = c.createOscillator();
+            var env = c.createGain();
+            var path = o.notes;
+            osc.type = o.type;
+            osc.frequency.setValueAtTime(path[0][1], t0);
+            for (var i = 1; i < path.length; i++) {
+                osc.frequency.linearRampToValueAtTime(path[i][1], t0 + path[i][0]);
+            }
+            var node = osc;
+            if (o.filter) {
+                var f = c.createBiquadFilter();
+                f.type = o.filter[0];
+                f.frequency.value = o.filter[1];
+                f.Q.value = o.filter[2];
+                osc.connect(f);
+                node = f;
+            }
+            env.gain.setValueAtTime(0.0001, t0);
+            env.gain.linearRampToValueAtTime(o.vol, t0 + 0.03);
+            env.gain.setValueAtTime(o.vol, t0 + Math.max(0.03, o.dur - 0.12));
+            env.gain.exponentialRampToValueAtTime(0.0001, t0 + o.dur);
+            node.connect(env);
+            env.connect(out);
+            if (o.vib) {
+                var lfo = c.createOscillator();
+                var depth = c.createGain();
+                lfo.frequency.value = o.vib[0];
+                depth.gain.value = o.vib[1];
+                lfo.connect(depth);
+                depth.connect(osc.frequency);
+                lfo.start(t0);
+                lfo.stop(t0 + o.dur + 0.05);
+            }
+            osc.start(t0);
+            osc.stop(t0 + o.dur + 0.05);
+        }
+
+        var VOICES = {
+            cow: function (c, out) {
+                voice(c, out, { type: 'sawtooth', notes: [[0, 140], [0.25, 190], [0.8, 115]], dur: 0.85,
+                                vol: 0.3, filter: ['lowpass', 650, 3], vib: [5, 7] });
+            },
+            dog: function (c, out) {
+                for (var i = 0; i < 2; i++) {
+                    voice(c, out, { type: 'sawtooth', notes: [[0, 430], [0.14, 210]], dur: 0.17, delay: i * 0.22,
+                                    vol: 0.34, filter: ['bandpass', 900, 1.4] });
+                }
+            },
+            cat: function (c, out) {
+                voice(c, out, { type: 'sawtooth', notes: [[0, 560], [0.18, 980], [0.55, 760], [0.8, 460]], dur: 0.85,
+                                vol: 0.26, filter: ['bandpass', 1400, 3], vib: [6, 18] });
+            },
+            pig: function (c, out) {
+                for (var i = 0; i < 2; i++) {
+                    voice(c, out, { type: 'square', notes: [[0, 250], [0.1, 190], [0.2, 240]], dur: 0.22, delay: i * 0.26,
+                                    vol: 0.2, filter: ['lowpass', 900, 2], vib: [32, 40] });
+                }
+            },
+            duck: function (c, out) {
+                for (var i = 0; i < 2; i++) {
+                    voice(c, out, { type: 'square', notes: [[0, 640], [0.14, 380]], dur: 0.16, delay: i * 0.2,
+                                    vol: 0.17, filter: ['bandpass', 1500, 2], vib: [45, 60] });
+                }
+            },
+            lion: function (c, out) {
+                voice(c, out, { type: 'sawtooth', notes: [[0, 125], [0.3, 100], [1.0, 60]], dur: 1.1,
+                                vol: 0.32, filter: ['lowpass', 520, 1], vib: [24, 26] });
+                voice(c, out, { type: 'sawtooth', notes: [[0, 188], [0.3, 150], [1.0, 90]], dur: 1.1,
+                                vol: 0.12, filter: ['lowpass', 520, 1], vib: [27, 30] });
+            }
+        };
+
+        return {
+            say: function (key) {
+                var c = context();
+                if (!c) return;
+                if (c.state === 'suspended') { try { c.resume(); } catch (e) { return; } }
+                try {
+                    // The new animal cuts the old one short, so mashing stays snappy.
+                    if (current) current.gain.setTargetAtTime(0, c.currentTime, 0.015);
+                    var master = c.createGain();
+                    master.gain.value = 1;
+                    master.connect(c.destination);
+                    current = master;
+                    VOICES[key](c, master);
+                } catch (e) { /* audio is a nicety, never a failure */ }
+            },
+            hush: function () { if (ctx) { try { ctx.suspend(); } catch (e) {} } },
+            wake: function () { if (ctx) { try { ctx.resume(); } catch (e) {} } }
+        };
+    })();
+
+    // ---- speech ---------------------------------------------------------
+
+    var synth = ('speechSynthesis' in window && 'SpeechSynthesisUtterance' in window)
+        ? window.speechSynthesis : null;
+
+    function speak(text) {
+        if (!synth) return;
+        try {
+            synth.cancel();             // the previous animal stops mid-word
+            var u = new SpeechSynthesisUtterance(text);
+            u.rate = 0.9;
+            u.pitch = 1.4;
+            u.volume = 1;
+            synth.speak(u);
+        } catch (e) { /* speech is a nicety too */ }
+    }
+
+    // ---- layout ---------------------------------------------------------
+
+    /* Square tiles, as large as the stage allows. Two columns by three rows on a
+       phone held upright, three by two when the screen is wider than tall — the
+       measuring is JS because CSS can't pick between the two shapes. */
+    function applyShape() {
+        var stage = board.parentElement;
+        var w = stage.clientWidth;
+        var h = stage.clientHeight;
+        var gap = parseFloat(getComputedStyle(board).rowGap) || 0;
+        var best = null;
+        [[2, 3], [3, 2]].forEach(function (shape) {
+            var cell = Math.floor(Math.min((w - gap * (shape[0] - 1)) / shape[0],
+                                           (h - gap * (shape[1] - 1)) / shape[1]));
+            if (!best || cell > best.cell) best = { cols: shape[0], rows: shape[1], cell: cell };
+        });
+        if (best.cell <= 0) return;
+        board.style.setProperty('--ani-cols', best.cols);
+        board.style.setProperty('--ani-rows', best.rows);
+        board.style.setProperty('--ani-cell', best.cell + 'px');
+    }
+
+    window.addEventListener('resize', applyShape);
+    window.addEventListener('orientationchange', applyShape);
+
+    // ---- play -----------------------------------------------------------
+
+    function react(tile) {
+        var key = tile.dataset.animal;
+        // Restart the animation even if this tile is mid-wiggle.
+        tile.removeAttribute('data-anim');
+        void tile.offsetWidth;
+        tile.setAttribute('data-anim', 'on');
+        clearTimeout(tile._anim);
+        tile._anim = setTimeout(function () { tile.removeAttribute('data-anim'); }, ANIM_MS);
+
+        taps++;
+        board.dataset.taps = taps;
+        board.dataset.last = key;
+        audio.say(key);
+        speak(SAYS[key]);
+    }
+
+    // Pointer events, one per finger: a toddler mashes with a whole hand, and
+    // click would only ever see the last of them. Click is kept for the keyboard.
+    board.addEventListener('pointerdown', function (e) {
+        var tile = e.target.closest('.ani-tile');
+        if (!tile) return;
+        e.preventDefault();
+        audio.wake();
+        react(tile);
+    });
+    board.addEventListener('click', function (e) {
+        var tile = e.target.closest('.ani-tile');
+        if (tile && e.detail === 0) react(tile);
+    });
+    board.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+    // ---- shell hooks ----------------------------------------------------
+
+    if (window.FunForgeGame) {
+        window.FunForgeGame.onPause(function () {
+            audio.hush();
+            if (synth) { try { synth.cancel(); } catch (e) {} }
+        });
+        window.FunForgeGame.onResume(function () { audio.wake(); });
+    }
+
+    applyShape();
+})();
+</script>
+{% endblock %}

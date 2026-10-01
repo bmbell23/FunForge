@@ -169,6 +169,26 @@ async def spell(request: Request):
     )
 
 
+@router.get("/bubbles/", response_class=HTMLResponse)
+async def bubbles(request: Request):
+    """Bubble Pop: bubbles drift up, every tap pops one. Nothing to win or lose."""
+    return templates.TemplateResponse(
+        request,
+        "games/bubbles.html",
+        {"title": "Bubble Pop"},
+    )
+
+
+@router.get("/animals/", response_class=HTMLResponse)
+async def animals(request: Request):
+    """Animal Sounds: six big animals, each one says its piece when tapped."""
+    return templates.TemplateResponse(
+        request,
+        "games/animals.html",
+        {"title": "Animal Sounds"},
+    )
+
+
 @router.get("/photos/", response_class=HTMLResponse)
 async def family_photos_admin(request: Request):
     """Parent screen: tick which cached photos may appear in a game.
