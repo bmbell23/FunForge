@@ -372,6 +372,112 @@ def run(page, errors):
     else:
         ok("family game correctly hidden — no approved photos synced")
 
+    # ---- tic-tac-toe ---------------------------------------------------------
+    section("Tic-Tac-Toe (a kid alone can win or tie, never lose)")
+    page.evaluate("localStorage.removeItem('funforge_unlocked')")
+    go("/games/")
+    assert page.locator(".game-card-ttt").count() == 1, "the picker has no Tic-Tac-Toe tile"
+    assert "Tic-Tac-Toe" in page.locator(".game-card-ttt").inner_text(), "tile is mislabelled"
+    ok("the picker shows the Tic-Tac-Toe tile")
+
+    page.click(".game-card-ttt")
+    page.wait_for_selector(".ttt-cell")
+    page.wait_for_timeout(500)
+    assert "/games/tic-tac-toe/" in page.url, f"tile went to {page.url}"
+    assert page.evaluate("getComputedStyle(document.querySelector('.header')).display") == "none", \
+        "the shared header is visible inside Tic-Tac-Toe"
+    assert page.locator("#tttChoice").is_visible(), "no mode choice on load"
+    for btn in ("#tttFriends", "#tttRobo"):
+        r = page.locator(btn).bounding_box()
+        assert r["width"] >= 80 and r["height"] >= 80, f"{btn} is too small to hit: {r}"
+    ok("the page loads on a big two-button choice: Two friends / Robo")
+
+    for _ in range(4):
+        page.go_back()
+        page.wait_for_timeout(250)
+    assert "/games/tic-tac-toe/" in page.url, f"Back escaped Tic-Tac-Toe — now at {page.url}"
+    ok("Back can't leave Tic-Tac-Toe either")
+
+    # Two friends: pieces alternate dog, cat, and the banner follows.
+    page.click("#tttFriends")
+    page.wait_for_timeout(200)
+    assert not page.locator("#tttChoice").is_visible(), "the choice stayed up after picking"
+    assert "🐶" in page.locator("#tttBanner").inner_text(), "dog should start"
+    page.locator(".ttt-cell").nth(0).click()
+    assert "🐱" in page.locator("#tttBanner").inner_text(), "banner did not pass the turn to the cat"
+    page.locator(".ttt-cell").nth(0).click()       # filled: ignored
+    page.locator(".ttt-cell").nth(1).click()
+    pieces = page.eval_on_selector_all(".ttt-cell", "els => els.map(e => e.dataset.piece || '')")
+    assert pieces[:3] == ["dog", "cat", ""], f"two-friends pieces are {pieces}"
+    ok("two friends: turns alternate and a filled square ignores taps")
+
+    # Robo, at real speed: board is square, big, and doesn't scroll.
+    go("/games/tic-tac-toe/")
+    page.click("#tttRobo")
+    page.wait_for_timeout(200)
+    dims = page.evaluate("""() => {
+        const rs = [...document.querySelectorAll('.ttt-cell')].map(c => c.getBoundingClientRect());
+        return {
+            skew: Math.max(...rs.map(r => Math.abs(r.width - r.height))),
+            small: Math.min(...rs.map(r => Math.min(r.width, r.height))),
+            over: document.body.scrollHeight - innerHeight,
+            font: parseFloat(getComputedStyle(document.querySelector('#tttBanner')).fontSize),
+        };
+    }""")
+    assert dims["skew"] <= 2, f"squares are {dims['skew']}px off square"
+    assert dims["small"] >= 80, f"squares are only {dims['small']}px — too small for small hands"
+    assert dims["over"] <= 0, "the board scrolls"
+    assert dims["font"] >= 24, f"banner font is {dims['font']}px"
+    ok("the board is square, squares are 80px+, and nothing scrolls")
+
+    page.locator(".ttt-cell").nth(4).click()
+    page.locator(".ttt-cell").nth(0).click()       # Robo's turn: ignored
+    pieces = page.eval_on_selector_all(".ttt-cell", "els => els.map(e => e.dataset.piece || '')")
+    assert pieces.count("dog") == 1 and pieces.count("cat") == 0, f"tap during Robo's turn landed: {pieces}"
+    page.wait_for_function("document.querySelectorAll('.ttt-cell[data-piece=cat]').length === 1",
+                           timeout=3000)
+    ok("Robo answers after a beat as the cat, and taps meanwhile are ignored")
+
+    # 30 whole rounds, fast-forwarded, against a kid who taps at random. Robo must
+    # never end one with three cats in a row, and every round must end in a
+    # celebration and a fresh board.
+    result = page.evaluate("""async () => {
+        window.FF_TTT_FAST = true;
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const board = document.getElementById('tttBoard');
+        const L = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+        const tally = { dog: 0, cat: 0, tie: 0 };
+        let catLines = 0;
+        for (let n = 0; n < 30; n++) {
+            const round = board.dataset.round;
+            for (let guard = 0; board.dataset.state !== 'cheer'; guard++) {
+                if (guard > 5000) throw new Error('round never ended');
+                if (board.dataset.state === 'play') {
+                    const free = [...board.children].filter(c => !c.dataset.piece);
+                    free[Math.floor(Math.random() * free.length)].click();
+                }
+                await sleep(3);
+            }
+            const p = [...board.children].map(c => c.dataset.piece || '');
+            if (L.some(l => l.every(i => p[i] === 'cat'))) catLines++;
+            tally[board.dataset.winner]++;
+            for (let guard = 0; board.dataset.round === round; guard++) {
+                if (guard > 2000) throw new Error('no fresh board after the celebration');
+                await sleep(3);
+            }
+            if ([...board.children].some(c => c.dataset.piece)) throw new Error('new board not empty');
+        }
+        return { tally, catLines };
+    }""")
+    assert result["catLines"] == 0 and result["tally"]["cat"] == 0, \
+        f"Robo won a round: {result}"
+    assert sum(result["tally"].values()) == 30, f"rounds went missing: {result}"
+    ok(f"30 rounds vs Robo, never a Robo win ({result['tally']['dog']} dog, "
+       f"{result['tally']['tie']} tie), each followed by a fresh board")
+
+    assert not errors, "JS errors in Tic-Tac-Toe: " + "; ".join(errors)
+    ok("no JS errors while playing")
+
     # ---- player card --------------------------------------------------------
     section("Player card")
     page.evaluate("localStorage.setItem('funforge_unlocked','true')")

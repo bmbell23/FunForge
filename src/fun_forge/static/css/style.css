@@ -1894,6 +1894,7 @@ body {
     pointer-events: none;
 }
 .game-card-match { background: linear-gradient(135deg, #43A047 0%, #9CCC65 100%); }
+.game-card-ttt { background: linear-gradient(135deg, #FF7043 0%, #FFCA28 100%); }
 
 .game-card-icon {
     font-size: clamp(48px, 12vmin, 88px);
@@ -2070,6 +2071,138 @@ body:has(.game-shell) .header { display: none; }
 .cm-cheer-visible {
     opacity: 1;
     transform: scale(1);
+}
+
+/* ---- tic-tac-toe ---- */
+.ttt-stage {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px;
+    gap: 8px;
+}
+
+/* Says whose turn it is, or how the round ended. Fixed height so the board does
+   not jump when the words change length. */
+.ttt-banner {
+    flex: 0 0 auto;
+    min-height: clamp(56px, 11vmin, 88px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 22px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
+    font-size: clamp(28px, 7vmin, 48px);
+    font-weight: 900;
+    text-align: center;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.ttt-banner-win { background: #FFD54F; color: #4A2C00; text-shadow: none; animation: ttt-bounce 0.6s ease infinite alternate; }
+.ttt-banner-tie { background: linear-gradient(90deg, #FF5252, #FFD740, #69F0AE, #40C4FF, #B388FF); color: #fff; animation: ttt-bounce 0.6s ease infinite alternate; }
+
+.ttt-field {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* A fixed square cell, measured in JS like the cover-match board: the field is
+   the only box that knows both the width and the height there is to spare. */
+.ttt-board {
+    display: grid;
+    grid-template-columns: repeat(3, var(--ttt-cell, 90px));
+    grid-template-rows: repeat(3, var(--ttt-cell, 90px));
+    gap: clamp(6px, 2vmin, 14px);
+}
+
+.ttt-cell {
+    position: relative;
+    border: none;
+    padding: 0;
+    border-radius: clamp(14px, 3.5vmin, 26px);
+    background: linear-gradient(135deg, #7C4DFF 0%, #B388FF 100%);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    min-width: 80px;
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--ttt-cell, 90px) * 0.62);
+    line-height: 1;
+    transition: transform 0.15s ease;
+}
+.ttt-cell:active { transform: scale(0.95); }
+.ttt-cell[data-piece] { background: #fff; cursor: default; }
+.ttt-piece { display: block; animation: ttt-pop 0.3s ease-out; }
+
+.ttt-cell-win {
+    background: #FFF176;
+    box-shadow: 0 0 22px rgba(255, 213, 79, 0.95);
+    animation: ttt-bounce 0.45s ease infinite alternate;
+}
+
+.ttt-choice {
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(16px, 4vmin, 32px);
+    padding: 16px;
+    background: linear-gradient(160deg, #1B2A4A 0%, #2E4372 100%);
+}
+.ttt-choice[hidden] { display: none; }
+.ttt-choice-btn {
+    width: min(100%, 420px);
+    min-height: 120px;
+    border: none;
+    border-radius: 28px;
+    color: #fff;
+    font-size: clamp(28px, 7vmin, 44px);
+    font-weight: 900;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+}
+.ttt-choice-btn:active { transform: scale(0.97); }
+.ttt-choice-friends { background: linear-gradient(135deg, #00ACC1 0%, #4DD0E1 100%); }
+.ttt-choice-robo { background: linear-gradient(135deg, #FF7043 0%, #FFCA28 100%); }
+
+.ttt-confetti {
+    position: absolute;
+    inset: 0;
+    z-index: 12;
+    overflow: hidden;
+    pointer-events: none;
+}
+.ttt-bit {
+    position: absolute;
+    top: -12%;
+    font-size: clamp(28px, 7vmin, 52px);
+    animation: ttt-fall 2.2s linear forwards;
+}
+
+@keyframes ttt-pop {
+    0%   { transform: scale(0.2); }
+    70%  { transform: scale(1.2); }
+    100% { transform: scale(1); }
+}
+@keyframes ttt-bounce {
+    from { transform: translateY(0) scale(1); }
+    to   { transform: translateY(-6px) scale(1.06); }
+}
+@keyframes ttt-fall {
+    to { transform: translateY(125vh) rotate(360deg); }
 }
 
 /* ---- family photo approval (parent screen) ---- */
