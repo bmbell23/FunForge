@@ -158,6 +158,16 @@ async def tic_tac_toe(request: Request):
     )
 
 
+@router.get("/checkers/", response_class=HTMLResponse)
+async def checkers(request: Request):
+    """Checkers for two friends: dogs against cats, tap a piece, tap where it goes."""
+    return templates.TemplateResponse(
+        request,
+        "games/checkers.html",
+        {"title": "Checkers"},
+    )
+
+
 @router.get("/spell/", response_class=HTMLResponse)
 async def spell(request: Request):
     """Spell It: a picture, its letters, and a garden that grows. The word list

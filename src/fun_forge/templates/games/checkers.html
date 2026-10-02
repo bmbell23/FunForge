@@ -1,0 +1,355 @@
+{% extends "games/_shell.html" %}
+
+{% block game %}
+{# Checkers for two friends passing the screen back and forth: the dogs start at
+   the bottom, the cats at the top. Tap one of your pieces and the squares it can
+   go to glow; tap a glowing square to move there. A jump that lands where it can
+   jump again keeps the turn going (tap the piece to stop instead), and you never
+   *have* to capture. Reach the far
+   row and you get a crown and can go backwards too. When one side has no pieces
+   or no moves left, the other side cheers and a fresh board is dealt. The
+   banner, field and confetti borrow Tic-Tac-Toe's styles. #}
+<div class="ttt-stage">
+    <div id="chkBanner" class="ttt-banner" aria-live="polite">&nbsp;</div>
+    <div class="ttt-field">
+        <div id="chkBoard" class="chk-board" data-state="play" data-round="0" aria-label="Checkers"></div>
+    </div>
+    <div id="chkConfetti" class="ttt-confetti" aria-hidden="true"></div>
+</div>
+{% endblock %}
+
+{% block game_js %}
+<script>
+(function () {
+    'use strict';
+
+    var N = 8;
+    var PIECE = { dog: '🐶', cat: '🐱' };
+    var CELEBRATE = 3000;
+
+    var board = document.getElementById('chkBoard');
+    var banner = document.getElementById('chkBanner');
+    var confetti = document.getElementById('chkConfetti');
+
+    // cells[i] is null or { who: 'dog' | 'cat', king: bool }; i = row * 8 + col,
+    // row 0 at the top. Dogs move up (row - 1), cats move down.
+    var cells = [];
+    var squares = [];
+    var turn = 'dog';
+    var firstMover = 'cat';     // flipped before each deal, so the dog starts round one
+    var selected = -1;
+    var targets = {};           // destination index -> captured index (or -1)
+    var chaining = -1;          // mid double-jump: the piece that must jump again or stop
+    var round = 0;
+    var pending = null;         // the one timed step in flight: { fn, ms, id }
+
+    // Tests set window.FF_CHK_FAST to skip the celebration in a blink.
+    function scaled(ms) { return window.FF_CHK_FAST ? Math.max(1, Math.round(ms * 0.02)) : ms; }
+
+    function later(fn, ms) {
+        cancel();
+        pending = { fn: fn, ms: ms, id: null };
+        arm();
+    }
+    function arm() {
+        if (!pending || pending.id !== null) return;
+        var p = pending;
+        p.id = setTimeout(function () {
+            if (pending === p) pending = null;
+            p.fn();
+        }, scaled(p.ms));
+    }
+    function cancel() {
+        if (pending && pending.id !== null) clearTimeout(pending.id);
+        pending = null;
+    }
+
+    // ---- sound ----------------------------------------------------------
+    // Synthesised, like the other games: no audio files, and nothing to share
+    // focus with because arriving here already destroyed the player's <audio>.
+
+    var audio = (function () {
+        var ctx = null;
+        function context() {
+            if (ctx) return ctx;
+            var Ctor = window.AudioContext || window.webkitAudioContext;
+            if (!Ctor) return null;
+            try { ctx = new Ctor(); } catch (e) { return null; }
+            return ctx;
+        }
+        function tone(freq, delay, dur, vol) {
+            var c = context();
+            if (!c) return;
+            if (c.state === 'suspended') { try { c.resume(); } catch (e) { return; } }
+            try {
+                var osc = c.createOscillator();
+                var gain = c.createGain();
+                var t0 = c.currentTime + delay;
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.0001, t0);
+                gain.gain.linearRampToValueAtTime(vol, t0 + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+                osc.connect(gain);
+                gain.connect(c.destination);
+                osc.start(t0);
+                osc.stop(t0 + dur + 0.03);
+            } catch (e) { /* audio is a nicety, never a failure */ }
+        }
+        return {
+            pick: function () { tone(440, 0, 0.08, 0.07); },
+            move: function () { tone(587, 0, 0.10, 0.09); },
+            jump: function () { tone(659, 0, 0.10, 0.10); tone(880, 0.10, 0.14, 0.10); },
+            king: function () {
+                [784, 988, 1175].forEach(function (f, i) { tone(f, i * 0.09, 0.2, 0.1); });
+            },
+            win:  function () {
+                [523, 659, 784, 1047].forEach(function (f, i) { tone(f, i * 0.12, 0.34, 0.12); });
+            },
+            hush: function () { if (ctx) { try { ctx.suspend(); } catch (e) {} } },
+            wake: function () { if (ctx) { try { ctx.resume(); } catch (e) {} } }
+        };
+    })();
+
+    // ---- layout ---------------------------------------------------------
+
+    /* Square the cells against the field, in JS for the same reason as the
+       other boards: CSS can't keep a grid square when both sides can bind. */
+    function applyShape() {
+        var field = board.parentElement;
+        var side = Math.min(field.clientWidth, field.clientHeight);
+        var cell = Math.floor(side / N);
+        if (cell > 0) board.style.setProperty('--chk-cell', cell + 'px');
+    }
+
+    window.addEventListener('resize', applyShape);
+    window.addEventListener('orientationchange', applyShape);
+
+    // ---- rules ----------------------------------------------------------
+
+    function other(who) { return who === 'dog' ? 'cat' : 'dog'; }
+    function dark(i) { return (Math.floor(i / N) + i % N) % 2 === 1; }
+    function inside(r, c) { return r >= 0 && r < N && c >= 0 && c < N; }
+
+    /* Where the piece on square i may go: { dest: capturedIndex | -1 }. Plain
+       pieces go forward diagonally, kings both ways; a jump hops one enemy into
+       the empty square behind it. Capturing is allowed, never required. */
+    function movesFrom(i) {
+        var p = cells[i];
+        var out = {};
+        if (!p) return out;
+        var r = Math.floor(i / N), c = i % N;
+        var dirs = p.king ? [-1, 1] : [p.who === 'dog' ? -1 : 1];
+        dirs.forEach(function (dr) {
+            [-1, 1].forEach(function (dc) {
+                var r1 = r + dr, c1 = c + dc;
+                if (!inside(r1, c1)) return;
+                var j = r1 * N + c1;
+                if (!cells[j]) { out[j] = -1; return; }
+                if (cells[j].who === p.who) return;
+                var r2 = r1 + dr, c2 = c1 + dc;
+                if (inside(r2, c2) && !cells[r2 * N + c2]) out[r2 * N + c2] = j;
+            });
+        });
+        return out;
+    }
+
+    /* Only the captures from square i: the moves left open mid double-jump. */
+    function jumpsFrom(i) {
+        var all = movesFrom(i), out = {};
+        Object.keys(all).forEach(function (k) { if (all[k] >= 0) out[k] = all[k]; });
+        return out;
+    }
+
+    function canMove(who) {
+        for (var i = 0; i < N * N; i++) {
+            if (cells[i] && cells[i].who === who && Object.keys(movesFrom(i)).length) return true;
+        }
+        return false;
+    }
+
+    // ---- drawing --------------------------------------------------------
+
+    function setBanner(text, extra) {
+        banner.textContent = text;
+        banner.className = 'ttt-banner' + (extra ? ' ' + extra : '');
+    }
+
+    function showTurn() { setBanner(PIECE[turn] + "'s turn!"); }
+
+    function draw(i) {
+        var sq = squares[i];
+        var p = cells[i];
+        sq.innerHTML = '';
+        sq.removeAttribute('data-piece');
+        sq.removeAttribute('data-king');
+        sq.classList.toggle('chk-selected', i === selected);
+        sq.classList.toggle('chk-target', targets.hasOwnProperty(i));
+        if (!p) return;
+        sq.dataset.piece = p.who;
+        if (p.king) sq.dataset.king = '1';
+        var disc = document.createElement('span');
+        disc.className = 'chk-piece chk-piece-' + p.who;
+        disc.textContent = PIECE[p.who];
+        if (p.king) {
+            var crown = document.createElement('span');
+            crown.className = 'chk-crown';
+            crown.textContent = '👑';
+            disc.appendChild(crown);
+        }
+        sq.appendChild(disc);
+    }
+
+    function drawAll() { for (var i = 0; i < N * N; i++) draw(i); }
+
+    function build() {
+        board.innerHTML = '';
+        squares = [];
+        for (var i = 0; i < N * N; i++) {
+            (function (i) {
+                var sq = document.createElement('button');
+                sq.type = 'button';
+                sq.className = 'chk-square ' + (dark(i) ? 'chk-dark' : 'chk-light');
+                if (!dark(i)) sq.tabIndex = -1;
+                sq.setAttribute('aria-label', 'Row ' + (Math.floor(i / N) + 1) + ', column ' + (i % N + 1));
+                sq.addEventListener('click', function () { tap(i); });
+                squares.push(sq);
+                board.appendChild(sq);
+            })(i);
+        }
+        applyShape();
+    }
+
+    function confettiBurst(bits) {
+        confetti.innerHTML = '';
+        for (var i = 0; i < 18; i++) {
+            var el = document.createElement('span');
+            el.className = 'ttt-bit';
+            el.textContent = bits[Math.floor(Math.random() * bits.length)];
+            el.style.left = Math.floor(Math.random() * 92) + '%';
+            el.style.animationDelay = (Math.random() * 0.6).toFixed(2) + 's';
+            confetti.appendChild(el);
+        }
+    }
+
+    // ---- play -----------------------------------------------------------
+
+    function deal(layout) {
+        cancel();
+        confetti.innerHTML = '';
+        cells = [];
+        for (var i = 0; i < N * N; i++) {
+            var r = Math.floor(i / N);
+            cells.push(!layout && dark(i) && (r < 3 || r > 4) ? { who: r < 3 ? 'cat' : 'dog', king: false } : null);
+        }
+        if (layout) Object.keys(layout).forEach(function (k) { cells[+k] = layout[k]; });
+        selected = -1;
+        targets = {};
+        chaining = -1;
+        board.removeAttribute('data-chain');
+        round++;
+        board.dataset.round = round;
+        board.removeAttribute('data-winner');
+        // Friends take turns at going first, round by round.
+        firstMover = other(firstMover);
+        turn = firstMover;
+        board.dataset.turn = turn;
+        board.dataset.state = 'play';
+        drawAll();
+        showTurn();
+    }
+
+    function select(i) {
+        selected = i;
+        targets = i < 0 ? {} : movesFrom(i);
+        drawAll();
+    }
+
+    function tap(i) {
+        if (board.dataset.state !== 'play') return;
+        if (targets.hasOwnProperty(i)) { move(selected, i, targets[i]); return; }
+        if (chaining >= 0) {
+            // Mid double-jump: tapping the jumper stops here; nothing else counts.
+            if (i === chaining) endTurn();
+            return;
+        }
+        if (cells[i] && cells[i].who === turn) {
+            // Tapping the picked piece again puts it back down.
+            if (i === selected) { select(-1); return; }
+            audio.pick();
+            select(i);
+            return;
+        }
+        select(-1);
+    }
+
+    function move(from, to, captured) {
+        var p = cells[from];
+        cells[to] = p;
+        cells[from] = null;
+        if (captured >= 0) cells[captured] = null;
+        var row = Math.floor(to / N);
+        var crowned = !p.king && ((p.who === 'dog' && row === 0) || (p.who === 'cat' && row === N - 1));
+        if (crowned) p.king = true;
+        if (crowned) audio.king(); else if (captured >= 0) audio.jump(); else audio.move();
+
+        // Landing a jump next to another one keeps the turn going. Being crowned
+        // ends it, as in the real game.
+        if (captured >= 0 && !crowned) {
+            var more = jumpsFrom(to);
+            if (Object.keys(more).length) {
+                chaining = to;
+                board.dataset.chain = '1';
+                selected = to;
+                targets = more;
+                drawAll();
+                setBanner('Jump again! ' + PIECE[turn]);
+                return;
+            }
+        }
+        endTurn();
+    }
+
+    function endTurn() {
+        chaining = -1;
+        board.removeAttribute('data-chain');
+        selected = -1;
+        targets = {};
+        var next = other(turn);
+        if (!canMove(next)) { drawAll(); finish(turn); return; }
+        turn = next;
+        board.dataset.turn = turn;
+        drawAll();
+        showTurn();
+    }
+
+    /* A side with no pieces left has no moves either, so one check covers both
+       ways a round can end. */
+    function finish(who) {
+        board.dataset.state = 'cheer';
+        board.dataset.winner = who;
+        setBanner(PIECE[who] + ' wins! 🎉', 'ttt-banner-win');
+        confettiBurst(['🎉', '⭐', '✨', '🎈', '👑', PIECE[who]]);
+        audio.win();
+        later(function () { deal(); }, CELEBRATE);
+    }
+
+    // Tests deal a hand-made board: { index: { who, king } }. Dog moves first.
+    window.FF_CHK_DEAL = function (layout) { firstMover = 'cat'; deal(layout); };
+
+    // ---- shell hooks ----------------------------------------------------
+    // Pausing drops the timer, not the step: the next deal is re-armed on resume.
+
+    if (window.FunForgeGame) {
+        window.FunForgeGame.onPause(function () {
+            if (pending && pending.id !== null) { clearTimeout(pending.id); pending.id = null; }
+            audio.hush();
+        });
+        window.FunForgeGame.onResume(function () { arm(); audio.wake(); });
+    }
+
+    build();
+    deal();
+})();
+</script>
+{% endblock %}

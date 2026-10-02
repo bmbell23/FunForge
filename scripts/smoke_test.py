@@ -478,6 +478,112 @@ def run(page, errors):
     assert not errors, "JS errors in Tic-Tac-Toe: " + "; ".join(errors)
     ok("no JS errors while playing")
 
+    # ---- checkers ------------------------------------------------------------
+    section("Checkers (tap a piece, tap a glow)")
+    page.evaluate("localStorage.removeItem('funforge_unlocked')")
+    go("/games/")
+    assert page.locator(".game-card-chk").count() == 1, "the picker has no Checkers tile"
+    assert "Checkers" in page.locator(".game-card-chk").inner_text(), "tile is mislabelled"
+    ok("the picker shows the Checkers tile")
+
+    errors.clear()
+    page.click(".game-card-chk")
+    page.wait_for_selector(".chk-square")
+    page.wait_for_timeout(500)
+    assert "/games/checkers/" in page.url, f"tile went to {page.url}"
+    assert page.evaluate("getComputedStyle(document.querySelector('.header')).display") == "none", \
+        "the shared header is visible inside Checkers"
+    for _ in range(4):
+        page.go_back()
+        page.wait_for_timeout(250)
+    assert "/games/checkers/" in page.url, f"Back escaped Checkers — now at {page.url}"
+    ok("Back can't leave Checkers either")
+
+    dims = page.evaluate("""() => {
+        const rs = [...document.querySelectorAll('.chk-square')].map(c => c.getBoundingClientRect());
+        return {
+            n: rs.length,
+            skew: Math.max(...rs.map(r => Math.abs(r.width - r.height))),
+            small: Math.min(...rs.map(r => Math.min(r.width, r.height))),
+            over: document.body.scrollHeight - innerHeight,
+            dogs: document.querySelectorAll('.chk-square[data-piece=dog]').length,
+            cats: document.querySelectorAll('.chk-square[data-piece=cat]').length,
+        };
+    }""")
+    assert dims["n"] == 64, f"board has {dims['n']} squares"
+    assert dims["skew"] <= 2, f"squares are {dims['skew']}px off square"
+    assert dims["small"] >= 40, f"squares are only {dims['small']}px"
+    assert dims["over"] <= 0, "the board scrolls"
+    assert dims["dogs"] == 12 and dims["cats"] == 12, f"opening has {dims['dogs']} dogs, {dims['cats']} cats"
+    ok(f"8x8 square board, {dims['small']:.0f}px squares, 12 dogs v 12 cats, no scrolling")
+
+    sq = page.locator(".chk-square")
+    def glowing():
+        return page.eval_on_selector_all(
+            ".chk-square", "els => els.flatMap((e, i) => e.classList.contains('chk-target') ? [i] : [])")
+    assert "🐶" in page.locator("#chkBanner").inner_text(), "dog should start"
+    sq.nth(17).click()                                  # a cat, on the dog's turn: ignored
+    assert glowing() == [], "picking the other side's piece lit up moves"
+    sq.nth(40).click()
+    assert glowing() == [33], f"dog at 40 should only glow 33, got {glowing()}"
+    sq.nth(33).click()
+    assert page.locator(".chk-square").nth(33).get_attribute("data-piece") == "dog", "dog did not move"
+    assert "🐱" in page.locator("#chkBanner").inner_text(), "turn did not pass to the cat"
+    ok("tap a piece, its moves glow, tap a glow to move, and the turn passes")
+
+    sq.nth(19).click()
+    sq.nth(26).click()
+    sq.nth(33).click()
+    assert sorted(glowing()) == [19, 24], f"dog at 33 should glow the jump 19 and the step 24, got {glowing()}"
+    sq.nth(19).click()
+    pieces = page.eval_on_selector_all(".chk-square", "els => els.map(e => e.dataset.piece || '')")
+    assert pieces[26] == "" and pieces[19] == "dog" and pieces.count("cat") == 11, "the jump did not capture"
+    ok("jumping a cat takes it off the board")
+
+    # Double jump: a dog at 49 with cats at 42 and 28 lined up behind each other.
+    # A spare cat at 1 keeps the round going.
+    chain_board = """() => FF_CHK_DEAL({ 49: { who: 'dog', king: false }, 42: { who: 'cat', king: false },
+                                      28: { who: 'cat', king: false }, 1: { who: 'cat', king: false } })"""
+    def chaining():
+        return page.locator("#chkBoard").get_attribute("data-chain") == "1"
+    page.evaluate(chain_board)
+    sq.nth(49).click()
+    assert sorted(glowing()) == [35, 40], f"dog at 49 should glow the jump 35 and the step 40, got {glowing()}"
+    sq.nth(35).click()
+    assert chaining() and glowing() == [21], f"a second jump should be offered from 35, got {glowing()}"
+    assert "🐶" in page.locator("#chkBanner").inner_text(), "the turn passed mid double-jump"
+    sq.nth(40).click()                                  # not a jump: ignored
+    assert chaining() and glowing() == [21], "a stray tap broke off the double jump"
+    sq.nth(21).click()
+    pieces = page.eval_on_selector_all(".chk-square", "els => els.map(e => e.dataset.piece || '')")
+    assert pieces[21] == "dog" and pieces.count("cat") == 1, f"the double jump didn't take both cats: {pieces}"
+    assert not chaining() and "🐱" in page.locator("#chkBanner").inner_text(), "turn didn't pass after the chain"
+    ok("a jump that can jump again keeps going, and both cats come off")
+
+    page.evaluate(chain_board)
+    sq.nth(49).click()
+    sq.nth(35).click()
+    sq.nth(35).click()                                  # tap the jumper: stop here
+    pieces = page.eval_on_selector_all(".chk-square", "els => els.map(e => e.dataset.piece || '')")
+    assert pieces[28] == "cat" and not chaining(), "stopping a double jump didn't leave the second cat"
+    assert "🐱" in page.locator("#chkBanner").inner_text(), "stopping a double jump didn't pass the turn"
+    ok("tapping the jumper stops the chain, since capturing is never forced")
+
+    # Kinging, and the end of a round: a lone dog one step from the top, and a
+    # cat with nowhere to go. Crowning ends it; then a fresh board is dealt.
+    page.evaluate("""() => { window.FF_CHK_FAST = true;
+        FF_CHK_DEAL({ 10: { who: 'dog', king: false }, 56: { who: 'cat', king: false } }); }""")
+    sq.nth(10).click()
+    assert sorted(glowing()) == [1, 3], f"lone dog should glow 1 and 3, got {glowing()}"
+    sq.nth(1).click()
+    assert sq.nth(1).get_attribute("data-king") == "1", "reaching the top row didn't crown the dog"
+    assert page.locator("#chkBoard").get_attribute("data-winner") == "dog", "a cat with no moves didn't end the round"
+    page.wait_for_function("document.querySelectorAll('.chk-square[data-piece]').length === 24", timeout=3000)
+    ok("the far row crowns a piece, no moves left ends the round, and a fresh board follows")
+
+    assert not errors, "JS errors in Checkers: " + "; ".join(errors)
+    ok("no JS errors while playing")
+
     # ---- spell it ------------------------------------------------------------
     section("Spell It (a picture, its letters, a garden that only grows)")
     page.evaluate("localStorage.removeItem('funforge_unlocked')")
