@@ -540,6 +540,35 @@ def run(page, errors):
     assert pieces[26] == "" and pieces[19] == "dog" and pieces.count("cat") == 11, "the jump did not capture"
     ok("jumping a cat takes it off the board")
 
+    # Double jump: a dog at 49 with cats at 42 and 28 lined up behind each other.
+    # A spare cat at 1 keeps the round going.
+    chain_board = """() => FF_CHK_DEAL({ 49: { who: 'dog', king: false }, 42: { who: 'cat', king: false },
+                                      28: { who: 'cat', king: false }, 1: { who: 'cat', king: false } })"""
+    def chaining():
+        return page.locator("#chkBoard").get_attribute("data-chain") == "1"
+    page.evaluate(chain_board)
+    sq.nth(49).click()
+    assert sorted(glowing()) == [35, 40], f"dog at 49 should glow the jump 35 and the step 40, got {glowing()}"
+    sq.nth(35).click()
+    assert chaining() and glowing() == [21], f"a second jump should be offered from 35, got {glowing()}"
+    assert "🐶" in page.locator("#chkBanner").inner_text(), "the turn passed mid double-jump"
+    sq.nth(40).click()                                  # not a jump: ignored
+    assert chaining() and glowing() == [21], "a stray tap broke off the double jump"
+    sq.nth(21).click()
+    pieces = page.eval_on_selector_all(".chk-square", "els => els.map(e => e.dataset.piece || '')")
+    assert pieces[21] == "dog" and pieces.count("cat") == 1, f"the double jump didn't take both cats: {pieces}"
+    assert not chaining() and "🐱" in page.locator("#chkBanner").inner_text(), "turn didn't pass after the chain"
+    ok("a jump that can jump again keeps going, and both cats come off")
+
+    page.evaluate(chain_board)
+    sq.nth(49).click()
+    sq.nth(35).click()
+    sq.nth(35).click()                                  # tap the jumper: stop here
+    pieces = page.eval_on_selector_all(".chk-square", "els => els.map(e => e.dataset.piece || '')")
+    assert pieces[28] == "cat" and not chaining(), "stopping a double jump didn't leave the second cat"
+    assert "🐱" in page.locator("#chkBanner").inner_text(), "stopping a double jump didn't pass the turn"
+    ok("tapping the jumper stops the chain, since capturing is never forced")
+
     # Kinging, and the end of a round: a lone dog one step from the top, and a
     # cat with nowhere to go. Crowning ends it; then a fresh board is dealt.
     page.evaluate("""() => { window.FF_CHK_FAST = true;

@@ -3,8 +3,9 @@
 {% block game %}
 {# Checkers for two friends passing the screen back and forth: the dogs start at
    the bottom, the cats at the top. Tap one of your pieces and the squares it can
-   go to glow; tap a glowing square to move there. Kept small on purpose for v1:
-   one jump per turn (no chains), and you never *have* to capture. Reach the far
+   go to glow; tap a glowing square to move there. A jump that lands where it can
+   jump again keeps the turn going (tap the piece to stop instead), and you never
+   *have* to capture. Reach the far
    row and you get a crown and can go backwards too. When one side has no pieces
    or no moves left, the other side cheers and a fresh board is dealt. The
    banner, field and confetti borrow Tic-Tac-Toe's styles. #}
@@ -38,6 +39,7 @@
     var firstMover = 'cat';     // flipped before each deal, so the dog starts round one
     var selected = -1;
     var targets = {};           // destination index -> captured index (or -1)
+    var chaining = -1;          // mid double-jump: the piece that must jump again or stop
     var round = 0;
     var pending = null;         // the one timed step in flight: { fn, ms, id }
 
@@ -152,6 +154,13 @@
         return out;
     }
 
+    /* Only the captures from square i: the moves left open mid double-jump. */
+    function jumpsFrom(i) {
+        var all = movesFrom(i), out = {};
+        Object.keys(all).forEach(function (k) { if (all[k] >= 0) out[k] = all[k]; });
+        return out;
+    }
+
     function canMove(who) {
         for (var i = 0; i < N * N; i++) {
             if (cells[i] && cells[i].who === who && Object.keys(movesFrom(i)).length) return true;
@@ -236,6 +245,8 @@
         if (layout) Object.keys(layout).forEach(function (k) { cells[+k] = layout[k]; });
         selected = -1;
         targets = {};
+        chaining = -1;
+        board.removeAttribute('data-chain');
         round++;
         board.dataset.round = round;
         board.removeAttribute('data-winner');
@@ -257,6 +268,11 @@
     function tap(i) {
         if (board.dataset.state !== 'play') return;
         if (targets.hasOwnProperty(i)) { move(selected, i, targets[i]); return; }
+        if (chaining >= 0) {
+            // Mid double-jump: tapping the jumper stops here; nothing else counts.
+            if (i === chaining) endTurn();
+            return;
+        }
         if (cells[i] && cells[i].who === turn) {
             // Tapping the picked piece again puts it back down.
             if (i === selected) { select(-1); return; }
@@ -277,6 +293,26 @@
         if (crowned) p.king = true;
         if (crowned) audio.king(); else if (captured >= 0) audio.jump(); else audio.move();
 
+        // Landing a jump next to another one keeps the turn going. Being crowned
+        // ends it, as in the real game.
+        if (captured >= 0 && !crowned) {
+            var more = jumpsFrom(to);
+            if (Object.keys(more).length) {
+                chaining = to;
+                board.dataset.chain = '1';
+                selected = to;
+                targets = more;
+                drawAll();
+                setBanner('Jump again! ' + PIECE[turn]);
+                return;
+            }
+        }
+        endTurn();
+    }
+
+    function endTurn() {
+        chaining = -1;
+        board.removeAttribute('data-chain');
         selected = -1;
         targets = {};
         var next = other(turn);
