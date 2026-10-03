@@ -33,6 +33,9 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        # .env also carries keys for host-side scripts (IMMICH_* for
+        # sync_immich_faces.py); forbidding them crash-loops the app (#29).
+        extra = "ignore"
 
 
 settings = Settings()
