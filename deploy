@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Rebuild and restart FunForge from this checkout, then wait until it answers (#27; contract:
+# agent-bus docs/DEPLOY.md). Touches only the funforge container; never down/rm/prune.
+#
+# Migrations: new tables are created at startup (Base.metadata.create_all in main.py). Changes
+# to existing tables are manual one-off scripts (e.g. migrate_add_album_artist.py), run by hand
+# after a deploy. Either way the DB is snapshotted first, to data/backups/ (newest 5 kept).
+set -euo pipefail
+cd "$(dirname "$0")"
+
+db=data/fun_forge.db
+if [ -f "$db" ]; then
+    mkdir -p data/backups
+    snap="data/backups/deploy-$(date +%Y%m%d-%H%M%S).db"
+    # SQLite's online backup API only reads the live DB, so it's safe while the app is running.
+    python3 - "$db" "$snap" <<'PY'
+import sqlite3, sys
+src = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
+dst = sqlite3.connect(sys.argv[2])
+src.backup(dst)
+dst.close(); src.close()
+PY
+    echo "deploy: DB snapshot $snap"
+    ls -1t data/backups/deploy-*.db | tail -n +6 | xargs -r rm --
+fi
+
+docker compose up -d --build funforge
+
+for _ in $(seq 1 45); do
+    if [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 localhost:8006/health)" = 200 ]; then
+        echo "deploy: funforge up on :8006 ($(cat version.txt 2>/dev/null || echo 'no version'))"
+        exit 0
+    fi
+    sleep 2
+done
+
+echo "deploy: funforge did not answer 200 on :8006/health within 90s" >&2
+docker logs --tail 20 funforge >&2 || true
+exit 1
