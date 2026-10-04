@@ -835,7 +835,7 @@ def run(page, errors):
     ok("50 rapid taps at random spots: no JS errors, still a tidy screenful")
 
     # ---- animal sounds -------------------------------------------------------
-    section("Animal Sounds (six huge buttons, each one answers)")
+    section("Animal Sounds (twelve real animals, one sound at a time)")
     original_size = page.viewport_size
     page.set_viewport_size({"width": 412, "height": 860})
     go("/games/")
@@ -856,8 +856,14 @@ def run(page, errors):
     assert "/games/animals/" in page.url, f"tile went to {page.url}"
     assert page.evaluate("getComputedStyle(document.querySelector('.header')).display") == "none", \
         "the shared header is visible inside Animal Sounds"
-    assert page.locator(".ani-tile").count() == 6, "Animal Sounds should have six animals"
-    ok("the page loads on six animals")
+    assert page.locator(".ani-tile").count() == 12, "Animal Sounds should have twelve animals"
+    sounds = page.evaluate("""async () => Promise.all([...document.querySelectorAll('.ani-tile')].map(async t => {
+        const r = await fetch(t.dataset.sound);
+        return [t.dataset.animal, r.status, r.headers.get('content-type'), (await r.arrayBuffer()).byteLength];
+    }))""")
+    bad = [x for x in sounds if x[1] != 200 or "audio" not in (x[2] or "") or x[3] < 2000]
+    assert not bad, f"animal recordings missing or not audio: {bad}"
+    ok("the page loads on twelve animals, each with a real recording")
 
     for _ in range(4):
         page.go_back()
@@ -901,26 +907,39 @@ def run(page, errors):
         return true;
     }""")
 
-    expected = {"cow": "Moo!", "dog": "Woof woof!", "cat": "Meow!",
-                "pig": "Oink oink!", "duck": "Quack quack!", "lion": "Roar!"}
-    for animal in expected:
-        tile = page.locator(f".ani-tile[data-animal={animal}]")
-        assert tile.get_attribute("data-anim") is None, f"{animal} starts out mid-animation"
-        box = tile.bounding_box()
+    board_data = lambda k: page.evaluate(f"document.getElementById('aniBoard').dataset.{k}")
+    def tap(animal):
+        box = page.locator(f".ani-tile[data-animal={animal}]").bounding_box()
         page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-        assert tile.get_attribute("data-anim") == "on", f"tapping the {animal} did not animate it"
-        assert page.evaluate("document.getElementById('aniBoard').dataset.last") == animal, \
-            f"the board does not know the {animal} was tapped"
-    assert page.evaluate("document.getElementById('aniBoard').dataset.taps") == "6", "taps were not counted"
-    page.wait_for_function("document.querySelectorAll('.ani-tile[data-anim]').length === 0", timeout=3000)
-    ok("tapping each animal sets it bouncing, and it settles again")
+    def wait_quiet():
+        page.wait_for_function("document.getElementById('aniBoard').dataset.playing === ''", timeout=6000)
+
+    page.wait_for_timeout(1500)                          # let the recordings decode
+    tap("cow")
+    assert page.locator(".ani-tile[data-animal=cow]").get_attribute("data-anim") == "on", "the cow did not bounce"
+    assert board_data("playing") == "cow", "the board does not know the cow is singing"
+    tap("dog")
+    assert board_data("taps") == "1", "a second animal started while the cow was still going"
+    assert page.locator(".ani-tile[data-animal=dog]").get_attribute("data-anim") is None, "the dog bounced over the cow"
+    wait_quiet()
+    tap("dog")
+    assert board_data("playing") == "dog" and board_data("taps") == "2", "the dog couldn't go once the cow finished"
+    wait_quiet()
+    ok("one sound at a time: other animals wait until the current one finishes")
+
+    for animal in ("sheep", "chicken", "frog"):
+        tap(animal)
+        assert board_data("last") == animal, f"tapping the {animal} did nothing"
+        wait_quiet()
+    assert page.locator(".ani-tile[data-anim]").count() == 0, "an animal is still bouncing after its sound"
+    ok("each animal plays to the end and settles again")
 
     if has_speech:
         assert page.evaluate("window.__spoken") == [], "an animal spoke with the TTS voice"
         ok("the animals make their noises without a TTS voice on top")
 
-    # Mashing: all six at once through separate pointers, then 60 more in a burst.
-    taps_before = int(page.evaluate("document.getElementById('aniBoard').dataset.taps"))
+    # Mashing: all twelve at once through separate pointers, then 60 more in a burst.
+    taps_before = int(board_data("taps"))
     page.evaluate("""() => {
         [...document.querySelectorAll('.ani-tile')].forEach((t, i) => {
             const r = t.getBoundingClientRect();
@@ -928,14 +947,14 @@ def run(page, errors):
                 bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
         });
     }""")
-    assert page.locator(".ani-tile[data-anim=on]").count() == 6, "simultaneous touches did not all animate"
     for i in range(60):
-        page.locator(".ani-tile").nth(i % 6).dispatch_event("pointerdown")
-    taps_now = int(page.evaluate("document.getElementById('aniBoard').dataset.taps"))
-    assert taps_now == taps_before + 66, f"mashing dropped taps: {taps_before} -> {taps_now}"
+        page.locator(".ani-tile").nth(i % 12).dispatch_event("pointerdown")
+    assert page.locator(".ani-tile[data-anim=on]").count() == 1, "mashing set several animals going at once"
+    assert int(board_data("taps")) == taps_before + 1, "mashing started more than one sound"
+    wait_quiet()
     assert "/games/animals/" in page.url, "mashing left the game"
     assert not errors, "JS errors in Animal Sounds: " + "; ".join(errors)
-    ok("six fingers at once and a mashing burst: every tap counted, no JS errors")
+    ok("twelve fingers at once and a mashing burst: exactly one sound, no JS errors")
 
     page.set_viewport_size(original_size)
 
