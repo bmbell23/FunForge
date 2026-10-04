@@ -2554,8 +2554,8 @@ body:has(.game-shell) .header { display: none; }
 }
 
 /* Fixed square tiles, sized in JS like the other boards: the stage is the only
-   box that knows both its width and its height, and it also picks between two
-   columns by three rows (upright phone) and three by two (wide screen). */
+   box that knows both its width and its height, and it also picks the grid
+   shape: three by four on an upright phone, wider on a wide screen. */
 .ani-board {
     display: grid;
     grid-template-columns: repeat(var(--ani-cols, 2), var(--ani-cell, 120px));
@@ -2589,6 +2589,12 @@ body:has(.game-shell) .header { display: none; }
 .ani-pig  { background: linear-gradient(135deg, #D81B60 0%, #F48FB1 100%); }
 .ani-duck { background: linear-gradient(135deg, #F9A825 0%, #FFEE58 100%); }
 .ani-lion { background: linear-gradient(135deg, #2E7D32 0%, #81C784 100%); }
+.ani-sheep   { background: linear-gradient(135deg, #00897B 0%, #80CBC4 100%); }
+.ani-horse   { background: linear-gradient(135deg, #6D4C41 0%, #BCAAA4 100%); }
+.ani-chicken { background: linear-gradient(135deg, #E53935 0%, #EF9A9A 100%); }
+.ani-goat    { background: linear-gradient(135deg, #546E7A 0%, #B0BEC5 100%); }
+.ani-owl     { background: linear-gradient(135deg, #3949AB 0%, #9FA8DA 100%); }
+.ani-frog    { background: linear-gradient(135deg, #7CB342 0%, #DCE775 100%); }
 
 .ani-face {
     display: block;
@@ -2606,6 +2612,9 @@ body:has(.game-shell) .header { display: none; }
     pointer-events: none;
 }
 
+/* While one animal sings, the rest dim a little: they're waiting their turn. */
+.ani-tile { transition: opacity 0.2s; }
+.ani-board:not([data-playing=""]) .ani-tile:not([data-anim]) { opacity: 0.55; }
 .ani-tile[data-anim="on"] { animation: ani-squish 0.45s ease-out; }
 .ani-tile[data-anim="on"]::after { animation: ani-flash 0.45s ease-out; }
 .ani-tile[data-anim="on"] .ani-face { animation: ani-hop 0.7s ease-out; }
