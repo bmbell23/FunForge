@@ -750,10 +750,12 @@ def run(page, errors):
     n = page.locator(".bub-bubble").count()
     assert 6 <= n <= 10, f"{n} bubbles on screen at the start, want roughly 6-10"
     sizes = page.eval_on_selector_all(
-        ".bub-bubble[data-kind=wander]", "els => els.map(e => e.getBoundingClientRect().width)")
-    assert sizes and all(59 <= s <= 141 for s in sizes), f"bubble sizes outside 60-140px: {sizes}"
+        ".bub-bubble", "els => els.map(e => e.getBoundingClientRect().width)")
+    assert sizes and all(45 <= s <= 210 for s in sizes), f"bubble sizes outside 45-210px: {sizes}"
     assert page.evaluate("document.body.scrollHeight - innerHeight") <= 0, "Bubble Pop scrolls"
-    ok(f"the page loads with {n} bubbles, 60-140px, and no scrolling")
+    # Random events would fire mid-check; the tests below start the ones they want.
+    page.evaluate("window.FF_BUB_AUTO(false)")
+    ok(f"the page loads with {n} bubbles, 45-210px, and no scrolling")
 
     for _ in range(4):
         page.go_back()
@@ -833,6 +835,114 @@ def run(page, errors):
     assert "/games/bubbles/" in page.url, "mashing left the game"
     assert not errors, "JS errors in Bubble Pop: " + "; ".join(errors)
     ok("50 rapid taps at random spots: no JS errors, still a tidy screenful")
+
+    # -- surprises: critters, special bubbles, events --
+    def settle():
+        page.wait_for_function("+document.getElementById('bubStage').dataset.critters === 0 && "
+                               "document.getElementById('bubStage').dataset.event === ''", timeout=15000)
+
+    def spawn_and_pop(kind, critter=None):
+        """Spawn a bubble at the centre through the test hook and tap it; returns its element's data-kind."""
+        bid = page.evaluate("([k, c]) => window.FF_BUB_SPAWN(k, c)", [kind, critter])
+        sel = f".bub-bubble[data-id='{bid}']"
+        info = page.evaluate("(sel) => { const e = document.querySelector(sel); const r = e.getBoundingClientRect();"
+                             " return { kind: e.dataset.kind, critter: e.dataset.critter, x: r.left + r.width / 2, y: r.top + r.height / 2 }; }", sel)
+        page.mouse.click(info["x"], info["y"])
+        page.wait_for_timeout(60)
+        assert page.locator(sel).count() == 0, f"the {kind} bubble did not pop"
+        return info
+
+    settle()
+    for kind in ("normal", "tiny", "giant", "rainbow", "golden", "splitter", "surprise"):
+        bid = page.evaluate("(k) => window.FF_BUB_SPAWN(k)", kind)
+        got = page.evaluate("(id) => document.querySelector(`.bub-bubble[data-id='${id}']`).dataset.kind", bid)
+        assert got == kind, f"spawned {kind}, element says data-kind={got}"
+    ok("every bubble kind spawns with its data-kind")
+
+    CRITTERS = ["fish", "chick", "butterfly", "star", "frog", "ladybug", "bee", "balloon", "octopus", "unicorn"]
+    for name in CRITTERS:
+        settle()
+        info = spawn_and_pop("normal", name)
+        assert info["critter"] == name, f"data-critter is {info['critter']!r}, wanted {name}"
+        assert stage_num("critters") >= 1, f"popping the {name} bubble freed nothing"
+        page.wait_for_function("+document.getElementById('bubStage').dataset.critters === 0", timeout=4500)
+    ok("each of the ten critters is freed, does its thing, and leaves within 4s")
+
+    settle()
+    before = page.locator(".bub-bubble").count()
+    spawn_and_pop("splitter", "")
+    assert page.locator(".bub-bubble").count() >= before + 2, "a splitter did not split into more bubbles"
+    ok("a splitter pops into 3-4 small bubbles")
+
+    for kind in ("rainbow", "golden"):
+        settle()
+        spawn_and_pop(kind)
+        assert page.locator(".bub-part").count() > 12, f"the {kind} bubble popped without a shower of bits"
+    ok("rainbow and golden bubbles burst into confetti and coins")
+
+    settle()
+    spawn_and_pop("surprise")
+    page.wait_for_timeout(400)
+    assert page.locator(".bub-part, .bub-critter").count() > 0, "the surprise bubble opened onto nothing"
+    ok("a surprise bubble opens onto something")
+
+    for name in ("shower", "parade", "giant", "rainbow"):
+        settle()
+        page.evaluate("(n) => window.FF_BUB_EVENT(n)", name)
+        assert page.evaluate("document.getElementById('bubStage').dataset.event") == name, f"{name} event did not start"
+        if name == "shower":
+            assert stage_num("bubbles") >= 15, "the bubble shower brought too few bubbles"
+        if name == "parade":
+            page.wait_for_timeout(300)
+            assert stage_num("critters") >= 4, "the parade has no critters"
+            walker = page.evaluate("""() => { const st = document.getElementById('bubStage').getBoundingClientRect();
+                const c = [...document.querySelectorAll('.bub-critter')].map(e => e.getBoundingClientRect())
+                    .find(r => r.left > st.left + 20 && r.right < st.right - 20); return c ? { x: c.left + c.width / 2, y: c.top + c.height / 2 } : null; }""")
+            if walker:
+                page.mouse.click(walker["x"], walker["y"])
+                page.wait_for_timeout(250)
+        if name == "giant":
+            giant = page.locator(".bub-bubble[data-kind=giant]").last
+            assert giant.count() == 1, "no giant bubble came"
+        if name == "rainbow":
+            page.wait_for_timeout(200)
+            kinds = page.eval_on_selector_all(".bub-bubble", "els => els.map(e => e.dataset.kind)")
+            assert all(k == "rainbow" for k in kinds), f"the rainbow wave left {set(kinds)}"
+            assert page.locator(".bub-sweep").count() == 1, "no rainbow sweep"
+        page.wait_for_function("document.getElementById('bubStage').dataset.event === ''", timeout=24000)
+    ok("each special event starts (data-event set), does its thing, and ends (data-event cleared)")
+
+    # The giant bubble: pop it and the whole screen celebrates.
+    settle()
+    page.evaluate("window.FF_BUB_EVENT('giant')")
+    page.wait_for_function("""() => { const e = document.querySelector('.bub-bubble[data-kind=giant]');
+        return e && e.getBoundingClientRect().bottom < document.getElementById('bubStage').getBoundingClientRect().bottom - 40; }""",
+        timeout=8000)
+    gpos = page.evaluate("""() => { const e = [...document.querySelectorAll('.bub-bubble[data-kind=giant]')].pop(); const r = e.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }""")
+    page.mouse.click(gpos["x"], gpos["y"])
+    page.wait_for_timeout(300)
+    assert page.locator(".bub-conf").count() >= 20, "popping the giant bubble did not rain confetti"
+    ok("popping the giant bubble sets off a screen-wide celebration")
+
+    # Mash with taps from several fingers while events run: no errors, no leaks.
+    settle()
+    import random as _r2
+    for rnd in range(4):
+        page.evaluate("(n) => window.FF_BUB_EVENT(n)", ["shower", "parade", "giant", "rainbow"][rnd])
+        for _ in range(20):
+            page.mouse.click(st_box["x"] + _r2.uniform(2, st_box["width"] - 2),
+                             st_box["y"] + _r2.uniform(2, st_box["height"] - 2))
+        page.evaluate("""() => { const st = document.getElementById('bubStage'), r = st.getBoundingClientRect();
+            for (let i = 0; i < 12; i++) st.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 40 + (i % 3),
+                pointerType: 'touch', isPrimary: i % 3 === 0, bubbles: true, cancelable: true,
+                clientX: r.left + Math.random() * r.width, clientY: r.top + Math.random() * r.height })); }""")
+        page.wait_for_timeout(600)
+    nodes = page.evaluate("document.getElementById('bubStage').querySelectorAll('*').length")
+    assert nodes < 400, f"{nodes} nodes under the stage after the mash — something leaks"
+    assert "/games/bubbles/" in page.url, "mashing left the game"
+    assert not errors, "JS errors in Bubble Pop: " + "; ".join(errors)
+    ok(f"92 more taps (single and multi-touch) through four events: no JS errors, {nodes} nodes on stage")
 
     # ---- animal sounds -------------------------------------------------------
     section("Animal Sounds (twelve real animals, one sound at a time)")

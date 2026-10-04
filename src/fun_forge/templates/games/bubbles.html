@@ -1,11 +1,13 @@
 {% extends "games/_shell.html" %}
 
 {% block game %}
-{# Big bubbles drift up the screen; tap one and it pops with a bloop. Tap empty
-   space and a little bubble appears under the finger. There is no score, no
-   goal and nothing to miss: a bubble that floats off the top is simply gone, and
-   a new one is already on its way up from the bottom. #}
-<div id="bubStage" class="bub-stage" data-bubbles="0" data-pops="0" data-spawned="0" aria-label="Bubbles"></div>
+{# Big bubbles drift up the screen; tap one and it pops with a bloop. Some hold
+   a critter that bursts free and does its own thing; some are rainbow, golden,
+   splitting or a surprise; every 25-45 s a special event (shower, parade, giant
+   bubble, rainbow wave) breaks out. Tap empty space and a little bubble appears
+   under the finger. There is no score, no goal and nothing to miss: a bubble that
+   floats off the top is simply gone, and a new one is already on its way up. #}
+<div id="bubStage" class="bub-stage" data-bubbles="0" data-pops="0" data-spawned="0" data-event="" data-critters="0" aria-label="Bubbles"></div>
 {% endblock %}
 
 {% block game_js %}
@@ -18,11 +20,14 @@
     var MIN_ON_SCREEN = 6;      // below this a new bubble is sent up at once
     var TARGET = 8;             // below this one is sent up every second or so
     var MAX_ON_SCREEN = 14;     // finger-made bubbles can pile up; the oldest quietly goes
-    var MIN_D = 60;             // diameters of the bubbles that rise from the bottom
-    var MAX_D = 140;
-    var EMOJI = ['🐟', '🐥', '⭐', '🦋', '🐢', '🐞', '🐙', '🐳', '🌸', '🌈'];
+    var HARD_MAX = 34;          // even a bubble shower plus splits never goes past this
+    var PART_MAX = 150;         // particles alive at once: a mid-range phone's budget
+    var CRITTER_MAX = 14;
+    var NOTE_MIN_D = 46;        // bigger bubble, lower note, across the whole size range
+    var NOTE_MAX_D = 200;
 
     var bubbles = [];           // bottom-most layer first, same order as the DOM
+    var critters = [];
     var seq = 0;
     var pops = 0;
     var spawned = 0;
@@ -34,15 +39,25 @@
     var last = 0;
     var running = false;
     var particles = 0;
+    var ev = null;              // the one special event in progress: {name, until}
+    var nextEvent = 0;
+    var autoEvents = true;
 
     function rand(a, b) { return a + Math.random() * (b - a); }
     function pickOne(list) { return list[Math.floor(Math.random() * list.length)]; }
+    function weighted(table, key) {
+        var total = 0, i;
+        for (i = 0; i < table.length; i++) total += table[i][key];
+        var r = Math.random() * total;
+        for (i = 0; i < table.length; i++) { r -= table[i][key]; if (r <= 0) return table[i]; }
+        return table[table.length - 1];
+    }
 
     // ---- sound ----------------------------------------------------------
     // Synthesised, like the other games: no audio files, and nothing to share
     // focus with because arriving here already destroyed the player's <audio>.
-    // Every note is from one pentatonic scale, so taps at random still sound
-    // like a tune. Bigger bubble, lower note.
+    // Every bloop is from one pentatonic scale, so taps at random still sound
+    // like a tune. Bigger bubble, lower note. Everything stays soft and round.
 
     var NOTES = (function () {
         var steps = [0, 2, 4, 7, 9], list = [];
@@ -53,7 +68,7 @@
     })();
 
     function noteFor(d) {
-        var t = Math.max(0, Math.min(1, (d - MIN_D) / (MAX_D - MIN_D)));
+        var t = Math.max(0, Math.min(1, (d - NOTE_MIN_D) / (NOTE_MAX_D - NOTE_MIN_D)));
         var i = Math.round((1 - t) * (NOTES.length - 1)) + pickOne([-1, 0, 0, 1]);
         return NOTES[Math.max(0, Math.min(NOTES.length - 1, i))];
     }
@@ -67,14 +82,14 @@
             try { ctx = new Ctor(); } catch (e) { return null; }
             return ctx;
         }
-        function tone(type, f0, f1, f2, dur, vol) {
+        function tone(type, f0, f1, f2, dur, vol, delay) {
             var c = context();
             if (!c) return;
             if (c.state === 'suspended') { try { c.resume(); } catch (e) { return; } }
             try {
                 var osc = c.createOscillator();
                 var gain = c.createGain();
-                var t0 = c.currentTime;
+                var t0 = c.currentTime + (delay || 0);
                 osc.type = type;
                 osc.frequency.setValueAtTime(f0, t0);
                 osc.frequency.exponentialRampToValueAtTime(f1, t0 + dur * 0.25);
@@ -88,13 +103,28 @@
                 osc.stop(t0 + dur + 0.03);
             } catch (e) { /* audio is a nicety, never a failure */ }
         }
+        /* A run of notes, one after another. */
+        function arp(freqs, step, type, vol, dur) {
+            freqs.forEach(function (f, i) { tone(type || 'triangle', f, f * 1.01, f, dur || 0.22, vol || 0.08, i * step); });
+        }
         return {
+            tone: tone,
+            arp: arp,
             // A bloop: the pitch swoops up into the note and settles.
             bloop: function (freq) {
                 tone('sine', freq * 0.7, freq * 1.2, freq, 0.3, 0.16);
                 tone('triangle', freq * 1.4, freq * 2.4, freq * 2, 0.16, 0.04);
             },
             pip:   function () { tone('sine', 880, 1100, 1320, 0.1, 0.06); },
+            jingle: function () { arp([1047, 1319, 1568, 2093, 1568, 2093, 2637], 0.07, 'triangle', 0.07, 0.25); },
+            fanfare: function () {
+                arp([523, 659, 784, 1047], 0.12, 'triangle', 0.1, 0.3);
+                [523, 659, 784, 1047].forEach(function (f) { tone('triangle', f, f, f, 0.9, 0.05, 0.5); });
+            },
+            firework: function () {
+                tone('sine', 400, 1500, 1600, 0.35, 0.06);
+                tone('triangle', 220, 70, 55, 0.25, 0.14, 0.35);
+            },
             hush:  function () { if (ctx) { try { ctx.suspend(); } catch (e) {} } },
             wake:  function () { if (ctx && ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} } }
         };
@@ -110,34 +140,302 @@
     window.addEventListener('resize', measure);
     window.addEventListener('orientationchange', measure);
 
+    // ---- one-shot effects -----------------------------------------------
+    // Everything here is a throwaway element animated with transform/opacity
+    // through the Web Animations API, counted against PART_MAX so a mashing
+    // hand cannot flood a phone.
+
+    /* Remove a one-shot effect when its animation ends (or after a timeout where
+       the Web Animations API is missing). */
+    function gone(el, anim, ms, counted) {
+        var done = false;
+        function finish() {
+            if (done) return;
+            done = true;
+            if (counted) particles--;
+            if (el.parentNode) el.parentNode.removeChild(el);
+        }
+        if (anim) anim.onfinish = finish;
+        setTimeout(finish, ms + 200);
+    }
+
+    /* A spray of bits. o: n, kind (bit|conf|coin|glyph), glyphs, hue (null =
+       every colour), far, up, grav, dur [min,max] ms, size [min,max], rain. */
+    function sparks(x, y, o) {
+        var n = Math.min(o.n, Math.max(0, PART_MAX - particles));
+        var cls = { conf: 'bub-conf', coin: 'bub-coin', glyph: 'bub-glyph' }[o.kind] || 'bub-bit';
+        for (var i = 0; i < n; i++) {
+            var p = document.createElement('div');
+            var s = Math.round(rand(o.size[0], o.size[1]));
+            var hue = o.hue == null ? Math.floor(rand(0, 360)) : (o.hue + Math.floor(rand(-50, 50)) + 360) % 360;
+            var dur = Math.round(rand(o.dur[0], o.dur[1]));
+            var sx = x, sy = y, dx, dy, rot = o.kind === 'conf' ? Math.round(rand(-540, 540)) : 0;
+            if (o.rain) {
+                sx = rand(0, width); sy = rand(-40, 0);
+                dx = rand(-70, 70); dy = height + 60;
+            } else {
+                var a = (i / n) * 6.283 + rand(-0.3, 0.3);
+                var far = rand(o.far * 0.5, o.far);
+                dx = Math.cos(a) * far; dy = Math.sin(a) * far;
+            }
+            p.className = 'bub-part ' + cls;
+            p.style.left = sx.toFixed(0) + 'px';
+            p.style.top = sy.toFixed(0) + 'px';
+            p.style.setProperty('--bub-hue', hue);
+            if (o.kind === 'glyph') {
+                p.textContent = pickOne(o.glyphs);
+                p.style.fontSize = s + 'px';
+            } else {
+                p.style.width = s + 'px';
+                p.style.height = (o.kind === 'conf' ? Math.round(s * 0.55) : s) + 'px';
+            }
+            stage.appendChild(p);
+            particles++;
+            var base = 'translate(-50%,-50%) ';
+            var anim = null;
+            if (p.animate) {
+                var frames = o.rain ?
+                    [{ transform: base + 'translate(0,0) rotate(0deg)', opacity: 1 },
+                     { transform: base + 'translate(' + dx.toFixed(0) + 'px,' + dy.toFixed(0) + 'px) rotate(' + rot + 'deg)', opacity: 1 }] :
+                    [{ transform: base + 'scale(1)', opacity: 1, offset: 0 },
+                     { transform: base + 'translate(' + dx.toFixed(0) + 'px,' + (dy - (o.up || 0)).toFixed(0) + 'px) rotate(' + (rot / 2) + 'deg) scale(1)', opacity: 1, offset: 0.5 },
+                     { transform: base + 'translate(' + (dx * 1.15).toFixed(0) + 'px,' + (dy + (o.grav || 14)).toFixed(0) + 'px) rotate(' + rot + 'deg) scale(0.2)', opacity: 0, offset: 1 }];
+                anim = p.animate(frames, { duration: dur, easing: 'cubic-bezier(.2,.7,.4,1)' });
+            }
+            gone(p, anim, dur, true);
+        }
+    }
+
+    function ringAt(x, y, d, hue) {
+        var ring = document.createElement('div');
+        ring.className = 'bub-ring';
+        ring.style.left = x + 'px';
+        ring.style.top = y + 'px';
+        ring.style.width = ring.style.height = d + 'px';
+        ring.style.setProperty('--bub-hue', hue);
+        stage.appendChild(ring);
+        gone(ring, ring.animate ? ring.animate(
+            [{ transform: 'translate(-50%,-50%) scale(0.8)', opacity: 0.9 },
+             { transform: 'translate(-50%,-50%) scale(1.5)', opacity: 0 }],
+            { duration: 320, easing: 'ease-out' }) : null, 340);
+    }
+
+    function burst(x, y, d, hue) {
+        ringAt(x, y, d, hue);
+        sparks(x, y, { n: 12, kind: 'bit', hue: hue, far: d * 1.3, grav: 14, dur: [380, 620], size: [8, 18] });
+    }
+
+    function confetti(x, y, n, far) {
+        sparks(x, y, { n: n, kind: 'conf', hue: null, far: far || 150, up: 60, grav: 120, dur: [900, 1400], size: [10, 18] });
+    }
+
+    // ---- critters -------------------------------------------------------
+    // A critter is one table entry: its emoji, size, how long it stays, a sound,
+    // and move(c, p), which says where it is at progress p (0..1) as
+    // [dx, dy, rotation, scaleX, scaleY] from the spot it was freed. Optional:
+    // trail (leaves rainbow dots), end(c) (runs as it leaves). Add a row to add
+    // a critter; nothing else needs to know.
+
+    var TAU = Math.PI * 2;
+
+    var CRITTERS = {
+        fish: { emoji: '🐟', size: 64, weight: 10, dur: [1.8, 2.3],
+            sound: function () { audio.tone('sine', 420, 720, 520, 0.12, 0.1); audio.tone('sine', 520, 900, 640, 0.14, 0.09, 0.14); },
+            move: function (c, p) { return [c.dir * p * 440, Math.sin(p * 14) * 22, Math.cos(p * 14) * 0.45 * c.dir, 1, 1]; } },
+        chick: { emoji: '🐥', size: 62, weight: 10, dur: [1.8, 2.2],
+            sound: function () { [0, 0.14, 0.3].forEach(function (d, i) { audio.tone('sine', 1500 + i * 60, 2300, 1900, 0.09, 0.06, d); }); },
+            move: function (c, p) {
+                if (p < 0.55) {
+                    var h = Math.abs(Math.sin(p / 0.55 * Math.PI * 2));
+                    return [c.dir * p * 70, -h * 46, 0, 1 + (1 - h) * 0.08, 1 - (1 - h) * 0.1];
+                }
+                var q = (p - 0.55) / 0.45;
+                return [c.dir * (38 + q * 170), -q * q * (c.y0 + 80), Math.sin(q * 40) * 0.3, 1, 1];
+            } },
+        butterfly: { emoji: '🦋', size: 62, weight: 10, dur: [2, 2.5],
+            sound: function () { audio.arp([784, 988, 1175], 0.1, 'sine', 0.08, 0.25); },
+            move: function (c, p) {
+                return [c.dir * p * 280 + Math.sin(p * 18) * 50, -p * (c.y0 + 60) * 0.9 + Math.cos(p * 18) * 40 - 40,
+                        Math.sin(p * 18) * 0.35, 1 + Math.sin(p * 60) * 0.12, 1];
+            } },
+        star: { emoji: '⭐', size: 66, weight: 9, dur: [1.5, 1.9],
+            sound: function () { audio.arp([523, 659, 784, 1047, 1319], 0.07, 'triangle', 0.08, 0.3); },
+            move: function (c, p) { return [0, -p * 40, p * 12, p < 0.8 ? 1 + p * 2.4 : (1 - p) * 14, p < 0.8 ? 1 + p * 2.4 : (1 - p) * 14]; },
+            end: function (c) {
+                sparks(c.x, c.y, { n: 10, kind: 'glyph', glyphs: ['⭐', '✨', '🌟'], far: 150, up: 30, grav: 40, dur: [700, 1100], size: [18, 30] });
+                audio.arp([1568, 2093, 1760, 2349], 0.06, 'sine', 0.06, 0.2);
+            } },
+        frog: { emoji: '🐸', size: 64, weight: 8, dur: [1.8, 2.2],
+            sound: function () { audio.tone('triangle', 110, 230, 90, 0.28, 0.16); audio.tone('sine', 180, 360, 140, 0.2, 0.08, 0.05); },
+            move: function (c, p) {
+                var j = Math.abs(Math.sin(p * Math.PI * 1.5));
+                return [c.dir * p * 380, -j * (p < 0.67 ? 190 : 260), Math.sin(p * Math.PI * 3) * 0.2 * c.dir,
+                        1 + (1 - j) * 0.14, 1 - (1 - j) * 0.16];
+            } },
+        ladybug: { emoji: '🐞', size: 54, weight: 8, dur: [1.8, 2.2],
+            sound: function () { [0, 0.07, 0.14].forEach(function (d) { audio.tone('sine', 1200, 1500, 1300, 0.05, 0.05, d); }); },
+            move: function (c, p) {
+                if (p < 0.5) return [c.dir * p * 240, Math.sin(p * 30) * 3, Math.sin(p * 30) * 0.12, 1, 1];
+                var q = (p - 0.5) * 2;
+                return [c.dir * (120 + q * 300), -q * q * 320, Math.sin(q * 50) * 0.2, 1, 1];
+            } },
+        bee: { emoji: '🐝', size: 54, weight: 8, dur: [1.7, 2.1],
+            sound: function () { audio.tone('triangle', 200, 240, 210, 0.42, 0.06); audio.tone('triangle', 203, 243, 213, 0.42, 0.04, 0.02); },
+            move: function (c, p) {
+                var zig = (Math.abs(((p * 6) % 2) - 1) - 0.5) * 130;
+                return [c.dir * p * 420, zig - p * 90, Math.sin(p * 60) * 0.12, 1, 1];
+            } },
+        balloon: { emoji: '🎈', size: 62, weight: 8, dur: [2, 2.5],
+            sound: function () { audio.tone('sine', 500, 900, 700, 0.3, 0.08); audio.tone('sine', 700, 1100, 800, 0.2, 0.05, 0.25); },
+            move: function (c, p) { return [Math.sin(p * 8) * 32, -p * (c.y0 + 110), Math.sin(p * 8) * 0.25, 1, 1]; } },
+        octopus: { emoji: '🐙', size: 64, weight: 7, dur: [1.8, 2.2],
+            sound: function () { audio.tone('sine', 300, 150, 400, 0.2, 0.12); audio.tone('sine', 500, 250, 600, 0.2, 0.1, 0.18); },
+            move: function (c, p) {
+                if (p < 0.3) { var s = Math.sin(p / 0.3 * Math.PI * 3); return [0, 0, 0, 1 + s * 0.22, 1 - s * 0.22]; }
+                var q = (p - 0.3) / 0.7, jet = Math.abs(Math.sin(q * 14));
+                return [c.dir * (q * 430), -q * 90 - jet * 14, c.dir * 0.3, 1 - jet * 0.15, 1 + jet * 0.15];
+            } },
+        unicorn: { emoji: '🦄', size: 84, weight: 1.5, dur: [2.3, 2.7], trail: true,
+            sound: function () { audio.arp([523, 659, 784, 1047, 1319, 1568, 2093], 0.06, 'triangle', 0.07, 0.3); },
+            move: function (c, p) {
+                var g = Math.sin(p * Math.PI * 8);
+                return [c.dir * p * (width + 220), -Math.abs(g) * 26, g * 0.1, 1, 1];
+            } }
+    };
+    var CRITTER_LIST = Object.keys(CRITTERS).map(function (k) { CRITTERS[k].name = k; return CRITTERS[k]; });
+
+    function critterGlyph(name) { return name === 'gift' ? '🎁' : CRITTERS[name].emoji; }
+
+    function syncCritters() { stage.dataset.critters = critters.length; }
+
+    function setCritter(c) {
+        c.el.style.transform = 'translate3d(' + (c.x - c.size / 2).toFixed(1) + 'px,' + (c.y - c.size / 2).toFixed(1) +
+            'px,0) rotate(' + (c.rot || 0).toFixed(3) + 'rad) scale(' + (c.sx * c.dir).toFixed(3) + ',' + c.sy.toFixed(3) + ')';
+    }
+
+    function makeCritter(def, x, y, extra) {
+        if (critters.length >= CRITTER_MAX) return null;
+        var el = document.createElement('div');
+        el.className = 'bub-critter';
+        el.dataset.critter = def.name;
+        el.textContent = def.emoji;
+        el.style.width = el.style.height = def.size + 'px';
+        el.style.fontSize = Math.round(def.size * 0.82) + 'px';
+        el.style.lineHeight = def.size + 'px';
+        var c = {
+            el: el, def: def, size: def.size, t: 0, x0: x, y0: y, x: x, y: y, rot: 0, sx: 1, sy: 1,
+            dur: rand(def.dur[0], def.dur[1]), dir: x < width / 2 ? 1 : -1, trailT: 0, hue: Math.floor(rand(0, 360))
+        };
+        if (extra) for (var k in extra) c[k] = extra[k];
+        critters.push(c);
+        stage.appendChild(el);
+        setCritter(c);
+        syncCritters();
+        return c;
+    }
+
+    function dropCritter(c) {
+        var i = critters.indexOf(c);
+        if (i >= 0) critters.splice(i, 1);
+        if (c.el.parentNode) c.el.parentNode.removeChild(c.el);
+        syncCritters();
+    }
+
+    /* Free a critter from a popped bubble: it does its own thing, then goes. */
+    function release(name, x, y) {
+        var def = CRITTERS[name];
+        if (!def) return;
+        def.sound();
+        makeCritter(def, x, y);
+    }
+
+    function trailDot(x, y, hue) {
+        if (particles >= PART_MAX) return;
+        var p = document.createElement('div');
+        p.className = 'bub-part bub-bit';
+        p.style.left = x.toFixed(0) + 'px';
+        p.style.top = y.toFixed(0) + 'px';
+        p.style.width = p.style.height = '20px';
+        p.style.setProperty('--bub-hue', hue % 360);
+        stage.appendChild(p);
+        particles++;
+        gone(p, p.animate ? p.animate(
+            [{ transform: 'translate(-50%,-50%) scale(1)', opacity: 0.95 },
+             { transform: 'translate(-50%,-50%) scale(0.2)', opacity: 0 }],
+            { duration: 700, easing: 'ease-out' }) : null, 700, true);
+    }
+
+    function stepCritter(c, dt) {
+        c.t += dt;
+        if (c.t < 0) return true;
+        if (c.update) return c.update(c, dt);
+        var p = Math.min(1, c.t / c.dur);
+        var m = c.def.move(c, p);
+        c.x = c.x0 + m[0]; c.y = c.y0 + m[1]; c.rot = m[2]; c.sx = m[3]; c.sy = m[4];
+        c.el.style.opacity = p > 0.85 ? ((1 - p) / 0.15).toFixed(2) : '1';
+        setCritter(c);
+        if (c.def.trail) {
+            c.trailT -= dt;
+            if (c.trailT <= 0) { c.trailT = 0.05; c.hue += 28; trailDot(c.x - c.dir * 26, c.y + 8, c.hue); }
+        }
+        return p < 1;
+    }
+
     // ---- bubbles --------------------------------------------------------
+
+    /* Kinds, weighted so the plain bubble is still what you see most. d: size range. */
+    var KINDS = [
+        { kind: 'normal',   weight: 48, d: [62, 140] },
+        { kind: 'tiny',     weight: 13, d: [48, 58] },
+        { kind: 'giant',    weight: 5,  d: [165, 198] },
+        { kind: 'rainbow',  weight: 9,  d: [80, 130] },
+        { kind: 'golden',   weight: 3,  d: [84, 112] },
+        { kind: 'splitter', weight: 9,  d: [90, 135] },
+        { kind: 'surprise', weight: 8,  d: [90, 130] }
+    ];
+    function kindInfo(kind) {
+        for (var i = 0; i < KINDS.length; i++) if (KINDS[i].kind === kind) return KINDS[i];
+        return KINDS[0];
+    }
+
+    function defaultCritter(kind) {
+        if (kind === 'surprise') return 'gift';
+        if (kind === 'golden' || kind === 'rainbow' || kind === 'splitter') return '';
+        return Math.random() < 0.5 ? weighted(CRITTER_LIST, 'weight').name : '';
+    }
 
     function place(b) {
         var x = b.x + Math.sin(b.t * b.freq + b.phase) * b.amp - b.r;
         b.el.style.transform = 'translate3d(' + x.toFixed(1) + 'px,' + (b.y - b.r).toFixed(1) + 'px,0)';
     }
 
-    function add(d, x, y, kind) {
+    function bx(b) { return b.x + Math.sin(b.t * b.freq + b.phase) * b.amp; }
+
+    /* o: d, x, y, kind, critter, vy, vx, wobble, big */
+    function add(o) {
+        var d = o.d, kind = o.kind;
         var el = document.createElement('div');
         var body = document.createElement('div');
         var hue = Math.floor(rand(0, 360));
-        el.className = 'bub-bubble';
+        el.className = 'bub-bubble bub-k-' + kind + (o.wobble ? ' bub-wobble' : '');
         el.dataset.id = ++seq;
         el.dataset.kind = kind;
+        el.dataset.critter = o.critter || '';
         el.style.width = el.style.height = d + 'px';
         el.style.setProperty('--bub-hue', hue);
         body.className = 'bub-body';
-        if (Math.random() < 0.55) {
+        if (o.critter) {
             var face = document.createElement('span');
             face.className = 'bub-emoji';
-            face.textContent = pickOne(EMOJI);
+            face.textContent = critterGlyph(o.critter);
             face.style.fontSize = Math.round(d * 0.5) + 'px';
             body.appendChild(face);
         }
         el.appendChild(body);
+        var vy = o.vy != null ? o.vy : rand(28, 60);
         var b = {
-            el: el, d: d, r: d / 2, x: x, y: y, hue: hue,
-            vy: rand(28, 60),                   // px per second, upwards
+            el: el, d: d, r: d / 2, x: o.x, y: o.y, hue: hue, kind: kind, critter: o.critter || '', big: !!o.big,
+            vy: vy, vyT: o.vyT != null ? o.vyT : vy, vx: o.vx || 0,       // px per second, upwards
             amp: rand(6, 22), freq: rand(0.6, 1.5), phase: rand(0, 6.28), t: 0
         };
         bubbles.push(b);
@@ -158,79 +456,108 @@
         sync();
     }
 
+    function make(kind, x, y, critter, extra) {
+        var info = kindInfo(kind);
+        var o = { d: Math.round(rand(info.d[0], info.d[1])), x: x, y: y, kind: info.kind,
+                  critter: critter != null ? critter : defaultCritter(info.kind),
+                  wobble: Math.random() < 0.25 };
+        if (extra) for (var k in extra) o[k] = extra[k];
+        return add(o);
+    }
+
+    function inside(d) { var m = d / 2 + 24; return rand(m, Math.max(m, width - m)); }
+
     /* A new bubble from just under the bottom edge. */
     function rise() {
-        var d = Math.round(rand(MIN_D, MAX_D));
-        var margin = d / 2 + 24;
-        add(d, rand(margin, Math.max(margin, width - margin)), height + d / 2 + 4, 'wander');
+        var kind = (ev && ev.name === 'rainbow') ? 'rainbow' : weighted(KINDS, 'weight').kind;
+        var info = kindInfo(kind), d = Math.round(rand(info.d[0], info.d[1]));
+        make(kind, inside(d), height + d / 2 + 4, null, { d: d });
     }
 
     /* The opening scene: a screenful already in the water. */
     function populate() {
         for (var i = 0; i < TARGET - 1; i++) {
-            var d = Math.round(rand(MIN_D, MAX_D));
-            var margin = d / 2 + 24;
-            add(d, rand(margin, Math.max(margin, width - margin)),
-                rand(height * 0.12, height - d / 2), 'wander');
+            var kind = weighted(KINDS, 'weight').kind;
+            var info = kindInfo(kind), d = Math.round(rand(info.d[0], info.d[1]));
+            make(kind, inside(d), rand(height * 0.12, height - d / 2), null, { d: d });
         }
     }
 
-    function burst(x, y, d, hue) {
-        var bits = Math.min(12, Math.max(0, 160 - particles) >> 1);
-        var ring = document.createElement('div');
-        ring.className = 'bub-ring';
-        ring.style.left = x + 'px';
-        ring.style.top = y + 'px';
-        ring.style.width = ring.style.height = d + 'px';
-        ring.style.setProperty('--bub-hue', hue);
-        stage.appendChild(ring);
-        gone(ring, ring.animate ? ring.animate(
-            [{ transform: 'translate(-50%,-50%) scale(0.8)', opacity: 0.9 },
-             { transform: 'translate(-50%,-50%) scale(1.5)', opacity: 0 }],
-            { duration: 320, easing: 'ease-out' }) : null, 340);
+    function toRainbow(b) {
+        b.kind = 'rainbow';
+        b.el.dataset.kind = 'rainbow';
+        b.el.classList.remove('bub-k-normal', 'bub-k-tiny', 'bub-k-giant', 'bub-k-golden', 'bub-k-splitter', 'bub-k-surprise');
+        b.el.classList.add('bub-k-rainbow');
+    }
 
-        for (var i = 0; i < bits; i++) {
-            var p = document.createElement('div');
-            var s = Math.round(rand(8, 18));
-            var a = (i / bits) * 6.283 + rand(-0.3, 0.3);
-            var far = rand(d * 0.6, d * 1.3);
-            p.className = 'bub-bit';
-            p.style.left = x + 'px';
-            p.style.top = y + 'px';
-            p.style.width = p.style.height = s + 'px';
-            p.style.setProperty('--bub-hue', (hue + Math.floor(rand(-50, 50)) + 360) % 360);
-            stage.appendChild(p);
-            particles++;
-            gone(p, p.animate ? p.animate(
-                [{ transform: 'translate(-50%,-50%) scale(1)', opacity: 1 },
-                 { transform: 'translate(calc(-50% + ' + (Math.cos(a) * far).toFixed(0) + 'px),calc(-50% + ' +
-                              (Math.sin(a) * far + 14).toFixed(0) + 'px)) scale(0.2)', opacity: 0 }],
-                { duration: Math.round(rand(380, 620)), easing: 'cubic-bezier(.2,.7,.4,1)' }) : null, 640, true);
+    /* The big fun when a bubble with something special goes. */
+    function celebrate(x, y) {
+        sparks(0, 0, { n: 55, kind: 'conf', rain: true, dur: [1500, 2400], size: [10, 18] });
+        sparks(x, y, { n: 24, kind: 'glyph', glyphs: ['⭐', '✨', '🌟', '🎉'], far: 220, up: 80, grav: 120, dur: [900, 1400], size: [22, 36] });
+        audio.fanfare();
+    }
+
+    function openSurprise(x, y) {
+        var what = pickOne(['parade', 'firework', 'confetti']);
+        if (what === 'parade') {
+            for (var i = 0; i < 4; i++) {
+                var def = weighted(CRITTER_LIST, 'weight');
+                makeCritter(def, x + (i - 1.5) * 34, y, { dir: i % 2 ? 1 : -1 });
+            }
+            audio.arp([659, 784, 988, 1175], 0.08, 'triangle', 0.08, 0.25);
+        } else if (what === 'firework') {
+            [[0, 0], [-70, -50], [70, -40]].forEach(function (o, i) {
+                var hue = Math.floor(rand(0, 360));
+                setTimeout(function () {
+                    if (!running) return;
+                    ringAt(x + o[0], y + o[1], 60, hue);
+                    sparks(x + o[0], y + o[1], { n: 14, kind: 'bit', hue: hue, far: 130, up: 10, grav: 60, dur: [700, 1000], size: [8, 14] });
+                    sparks(x + o[0], y + o[1], { n: 4, kind: 'glyph', glyphs: ['✨', '⭐'], far: 100, up: 10, grav: 50, dur: [700, 1000], size: [16, 24] });
+                }, i * 160);
+            });
+            audio.firework();
+        } else {
+            confetti(x, y, 36, 200);
+            audio.jingle();
         }
     }
 
-    /* Remove a one-shot effect when its animation ends (or after a timeout where
-       the Web Animations API is missing). */
-    function gone(el, anim, ms, isBit) {
-        var done = false;
-        function finish() {
-            if (done) return;
-            done = true;
-            if (isBit) particles--;
-            if (el.parentNode) el.parentNode.removeChild(el);
+    function splitInto(x, y, d) {
+        var n = 3 + Math.floor(Math.random() * 2), start = rand(0, TAU);
+        for (var i = 0; i < n; i++) {
+            var a = start + i / n * TAU;
+            var cd = Math.round(rand(46, 62));
+            add({ d: cd, x: x, y: y, kind: 'tiny', critter: '', vx: Math.cos(a) * 170, vy: -Math.sin(a) * 150 + 30, vyT: rand(34, 60) });
         }
-        if (anim) anim.onfinish = finish;
-        setTimeout(finish, ms + 200);
     }
+
+    /* Each kind's own way of popping. */
+    var POPS = {
+        rainbow: function (b, x, y) {
+            sparks(x, y, { n: 26, kind: 'conf', hue: null, far: b.d * 1.6, up: 40, grav: 90, dur: [800, 1200], size: [9, 16] });
+            audio.arp([523, 587, 659, 784, 880, 1047], 0.05, 'sine', 0.07, 0.25);
+        },
+        golden: function (b, x, y) {
+            sparks(x, y, { n: 14, kind: 'coin', far: 180, up: 120, grav: 260, dur: [900, 1400], size: [14, 22] });
+            sparks(x, y, { n: 8, kind: 'glyph', glyphs: ['⭐', '✨', '🌟'], far: 150, up: 90, grav: 200, dur: [900, 1300], size: [18, 28] });
+            audio.jingle();
+        },
+        splitter: function (b, x, y) { splitInto(x, y, b.d); audio.arp([784, 988, 1175], 0.05, 'sine', 0.07, 0.15); },
+        surprise: function (b, x, y) { openSurprise(x, y); }
+    };
 
     function pop(b, quiet) {
+        var x = bx(b), y = b.y;
         drop(b);
-        burst(b.x + Math.sin(b.t * b.freq + b.phase) * b.amp, b.y, b.d, b.hue);
-        if (!quiet) {
-            audio.bloop(noteFor(b.d));
-            pops++;
-            stage.dataset.pops = pops;
-        }
+        burst(x, y, b.d, b.hue);
+        if (quiet) return;
+        audio.bloop(noteFor(b.d));
+        pops++;
+        stage.dataset.pops = pops;
+        if (POPS[b.kind]) POPS[b.kind](b, x, y);
+        if (b.big) celebrate(x, y);
+        if (b.critter && b.critter !== 'gift') release(b.critter, x, y);
+        else if (b.critter === 'gift' && b.kind !== 'surprise') openSurprise(x, y);
     }
 
     /* The bubble under a finger, if any. The hit area is a little fatter than the
@@ -240,12 +567,97 @@
         var best = null, bestScore = 1;
         for (var i = bubbles.length - 1; i >= 0; i--) {
             var b = bubbles[i];
-            var dx = x - (b.x + Math.sin(b.t * b.freq + b.phase) * b.amp);
+            var dx = x - bx(b);
             var dy = y - b.y;
             var score = Math.sqrt(dx * dx + dy * dy) / (b.r + 10);
             if (score < bestScore) { best = b; bestScore = score; }
         }
         return best;
+    }
+
+    /* A parade critter under the finger, if any. */
+    function pickParade(x, y) {
+        for (var i = critters.length - 1; i >= 0; i--) {
+            var c = critters[i];
+            if (c.parade && c.t >= 0 && Math.hypot(x - c.x, y - c.y) < 44) return c;
+        }
+        return null;
+    }
+
+    // ---- special events -------------------------------------------------
+    // One at a time, every 25-45 s of play. Their clocks are the game clock,
+    // so a paused game neither runs nor ends one.
+
+    function endEvent() {
+        ev = null;
+        stage.dataset.event = '';
+    }
+
+    function paradeUpdate(c, dt) {
+        c.x += c.dir * c.speed * dt;
+        var hop = Math.abs(Math.sin(c.t * 6 + c.phase)) * 16;
+        var y = c.base - hop, rot = 0;
+        if (c.jump > 0) {
+            c.jump -= dt;
+            var q = 1 - Math.max(0, c.jump) / 0.7;
+            y -= Math.sin(q * Math.PI) * 120;
+            rot = q * TAU * c.dir;
+        }
+        c.y = y; c.rot = rot; c.sx = 1; c.sy = 1;
+        setCritter(c);
+        return c.t < 25 && (c.dir > 0 ? c.x < width + 90 : c.x > -90);
+    }
+
+    var EVENTS = {
+        shower: function () {
+            var n = 15 + Math.floor(Math.random() * 6);
+            for (var i = 0; i < n; i++) {
+                var d = Math.round(rand(48, 78));
+                add({ d: d, x: inside(d), y: height + d / 2 + rand(0, 380), kind: 'tiny', critter: '', vy: rand(130, 210) });
+            }
+            audio.arp([784, 988, 1175, 1568], 0.06, 'sine', 0.06, 0.2);
+            return { until: clock + 5 };
+        },
+        parade: function () {
+            var dir = Math.random() < 0.5 ? 1 : -1, n = 6;
+            for (var i = 0; i < n; i++) {
+                var def = weighted(CRITTER_LIST, 'weight');
+                makeCritter(def, dir > 0 ? -40 - i * 74 : width + 40 + i * 74, height - 50, {
+                    parade: true, dir: dir, speed: 92, base: height - 50, phase: i, jump: 0, update: paradeUpdate
+                });
+            }
+            audio.arp([523, 659, 784, 659, 784, 1047], 0.1, 'triangle', 0.07, 0.2);
+            return { until: clock + 20, parade: true };
+        },
+        giant: function () {
+            add({ d: 200, x: width / 2, y: height + 110, kind: 'giant', critter: Math.random() < 0.5 ? 'unicorn' : 'gift',
+                  vy: 46, big: true });
+            audio.arp([392, 523, 659], 0.12, 'sine', 0.08, 0.35);
+            return { until: clock + 9 };
+        },
+        rainbow: function () {
+            var sweep = document.createElement('div');
+            sweep.className = 'bub-sweep';
+            stage.appendChild(sweep);
+            gone(sweep, sweep.animate ? sweep.animate(
+                [{ transform: 'translateX(-100%)', opacity: 0.85 },
+                 { transform: 'translateX(0)', opacity: 0.75, offset: 0.5 },
+                 { transform: 'translateX(100%)', opacity: 0 }],
+                { duration: 2600, easing: 'ease-in-out' }) : null, 2600);
+            bubbles.forEach(toRainbow);
+            audio.arp([523, 587, 659, 784, 880, 1047, 1319], 0.08, 'sine', 0.07, 0.3);
+            return { until: clock + 4 };
+        }
+    };
+    var EVENT_NAMES = Object.keys(EVENTS);
+
+    function startEvent(name) {
+        if (!EVENTS[name]) return;
+        endEvent();
+        var e = EVENTS[name]();
+        e.name = name;
+        ev = e;
+        stage.dataset.event = name;
     }
 
     // ---- input ----------------------------------------------------------
@@ -258,11 +670,17 @@
         var rect = stage.getBoundingClientRect();
         var x = e.clientX - rect.left;
         var y = e.clientY - rect.top;
+        var walker = pickParade(x, y);
+        if (walker) {
+            if (walker.jump <= 0) { walker.jump = 0.7; walker.def.sound(); }
+            return;
+        }
         var hit = pick(x, y);
         if (hit) { pop(hit); return; }
-        add(Math.round(rand(44, 64)), x, y, 'finger');
+        add({ d: Math.round(rand(46, 64)), x: x, y: y, kind: 'finger', critter: '' });
         audio.pip();
-        while (bubbles.length > MAX_ON_SCREEN) pop(bubbles[0], true);
+        var cap = (ev && ev.name === 'shower') ? HARD_MAX : MAX_ON_SCREEN;
+        while (bubbles.length > cap) pop(bubbles[0], true);
     });
     stage.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
@@ -273,13 +691,35 @@
         var dt = Math.min(0.05, (now - last) / 1000);
         last = now;
         clock += dt;
+        var i;
 
-        for (var i = bubbles.length - 1; i >= 0; i--) {
+        var ease = 1 - Math.pow(0.3, dt), slow = Math.pow(0.35, dt);
+        for (i = bubbles.length - 1; i >= 0; i--) {
             var b = bubbles[i];
             b.t += dt;
             b.y -= b.vy * dt;
-            if (b.y < -b.r - 4) { drop(b); continue; }     // floated off the top
+            if (b.vx) { b.x += b.vx * dt; b.vx *= slow; if (Math.abs(b.vx) < 1) b.vx = 0; }
+            if (b.vy !== b.vyT) b.vy += (b.vyT - b.vy) * ease;
+            if (b.y < -b.r - 4 || b.y > height + b.r + 400 || b.x < -b.r * 2 || b.x > width + b.r * 2) { drop(b); continue; }
             place(b);
+        }
+        while (bubbles.length > HARD_MAX) drop(bubbles[0]);
+
+        for (i = critters.length - 1; i >= 0; i--) {
+            var c = critters[i];
+            if (!stepCritter(c, dt)) {
+                if (c.def.end) c.def.end(c);
+                dropCritter(c);
+            }
+        }
+
+        if (ev) {
+            var over = clock >= ev.until;
+            if (ev.parade && !critters.some(function (k) { return k.parade; })) over = true;
+            if (over) endEvent();
+        } else if (autoEvents && clock >= nextEvent) {
+            startEvent(pickOne(EVENT_NAMES));
+            nextEvent = clock + rand(25, 45);
         }
 
         if (bubbles.length < MIN_ON_SCREEN) {
@@ -302,6 +742,16 @@
         cancelAnimationFrame(raf);
     }
 
+    // ---- test hooks -----------------------------------------------------
+    // Used by scripts/smoke_test.py; harmless to a player.
+
+    window.FF_BUB_EVENT = function (name) { startEvent(name); };
+    window.FF_BUB_SPAWN = function (kind, critter) {
+        var b = make(kind, width / 2, height / 2, critter);
+        return b.el.dataset.id;
+    };
+    window.FF_BUB_AUTO = function (on) { autoEvents = !!on; };
+
     // ---- shell hooks ----------------------------------------------------
 
     if (window.FunForgeGame) {
@@ -310,6 +760,7 @@
     }
 
     measure();
+    nextEvent = rand(25, 45);
     populate();
     start();
 })();
