@@ -64,11 +64,9 @@ android/.gradle/
 android/build/
 android/app/build/
 
-# Cover art extracted from the music files by the scanner — 14MB of derived
-# data that a startup scan regenerates, same rationale as data/.
+# Where cover art and the Immich family photos lived before #35 moved them to
+# data/covers/ and data/faces/ (ignored by data/* above). Kept so a stale copy can
+# never be committed. THIS REPO IS PUBLIC — pictures of the kids must never be
+# committed to it.
 src/fun_forge/static/covers/
-
-# Family photos pulled from Immich by scripts/sync_immich_faces.py. THIS REPO IS
-# PUBLIC — pictures of the kids must never be committed to it. Same treatment as
-# the cover art above: derived, re-syncable, and none of GitHub's business.
 src/fun_forge/static/faces/

@@ -1,64 +1,61 @@
-# Multi-stage build for FunForge
-FROM python:3.11-slim as base
+# FunForge. Two targets:
+#   development - what docker-compose.yml builds on dockerhost; ./src is bind-mounted over the code.
+#   production  - the baked image published to ghcr.io/bmbell23/funforge for k3s (#35): code in
+#                 the image, no bind mounts, nothing installed at start. Everything the app
+#                 writes (DB, cover art, family photos, APK) goes to /app/data, one volume.
+FROM python:3.11-slim AS base
 
-# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src
 
-# Install system dependencies for audio processing
-RUN apt-get update && apt-get install -y \
+# ffmpeg and the image libs are for audio metadata and cover art; tini reaps the
+# healthcheck's children (compose gets the same from `init: true`).
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libjpeg-dev \
     libpng-dev \
     libfreetype6-dev \
     ffmpeg \
+    tini \
     && rm -rf /var/lib/apt/lists/*
 
-# Create app directory
 WORKDIR /app
 
-# Copy source code first
-COPY . .
+# Dependencies first, so a code-only change reuses this layer.
+COPY pyproject.toml ./
+RUN mkdir -p src/fun_forge && touch src/fun_forge/__init__.py \
+    && pip install --no-cache-dir -e . \
+    && rm -rf src
 
-# Install the package
-RUN pip install --no-cache-dir -e .
+COPY src ./src
+COPY scripts ./scripts
 
-# Development stage
-FROM base as development
-
-# Copy source code
-COPY . .
-
-# Install the package with development dependencies
-RUN pip install --no-cache-dir -e ".[dev]"
-
-# Create necessary directories
-RUN mkdir -p /app/data /app/logs
-
-# Expose port
 EXPOSE 8006
 
-# Command for development
+# Development stage
+FROM base AS development
+
+RUN pip install --no-cache-dir -e ".[dev]"
+RUN mkdir -p /app/data /app/logs
+
 CMD ["python", "-m", "uvicorn", "fun_forge.main:app", "--host", "0.0.0.0", "--port", "8006", "--reload"]
 
 # Production stage
-FROM base as production
+FROM base AS production
 
-# Copy source code
-COPY . .
+COPY version.txt ./
 
-# Create necessary directories
-RUN mkdir -p /app/data /app/logs
-
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash funforge
-RUN chown -R funforge:funforge /app
+# uid 1000 so a k3s fsGroup/securityContext can match it; /app/data is the PVC.
+RUN useradd --uid 1000 --create-home --shell /bin/bash funforge \
+    && mkdir -p /app/data /app/logs \
+    && chown -R funforge:funforge /app/data /app/logs
 USER funforge
 
-# Expose port
-EXPOSE 8006
+VOLUME ["/app/data"]
 
-# Command for production
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8006/health')"
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["python", "-m", "uvicorn", "fun_forge.main:app", "--host", "0.0.0.0", "--port", "8006"]
-

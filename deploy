@@ -24,6 +24,18 @@ PY
     ls -1t data/backups/deploy-*.db | tail -n +6 | xargs -r rm --
 fi
 
+# One-time move (#35): cover art and the Immich family photos used to be written into the code
+# tree; they live in data/ now, beside the DB. mv -n never overwrites, so a re-run is a no-op.
+for d in covers faces; do
+    old=src/fun_forge/static/$d
+    if [ -d "$old" ]; then
+        mkdir -p "data/$d"
+        find "$old" -mindepth 1 -maxdepth 1 -exec mv -n -t "data/$d" {} +
+        rmdir "$old" 2>/dev/null && echo "deploy: moved $old to data/$d" \
+            || echo "deploy: $old not empty after move, left in place" >&2
+    fi
+done
+
 docker compose up -d --build funforge
 
 for _ in $(seq 1 45); do

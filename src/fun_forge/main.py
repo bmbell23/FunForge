@@ -125,7 +125,14 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 
-# Mount static files
+# Mount static files. Cover art and the family photos are written at runtime, so
+# they live in the data dir, but keep their /static/... addresses: the DB stores
+# cover URLs and the face manifest stores faces/<id>.jpg. Starlette matches mounts
+# in order, so these two must come before /static itself (#35).
+settings.covers_dir.mkdir(parents=True, exist_ok=True)
+settings.faces_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static/covers", StaticFiles(directory=str(settings.covers_dir)), name="covers")
+app.mount("/static/faces", StaticFiles(directory=str(settings.faces_dir)), name="faces")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
@@ -189,7 +196,7 @@ async def health_check():
 # version.json and self-updates; a fresh phone installs the APK from a browser.
 # ---------------------------------------------------------------------------
 
-DATA_DIR = Path("/app/data") if Path("/app/data").is_dir() else Path("data")
+DATA_DIR = Path(settings.data_dir) if Path(settings.data_dir).is_dir() else Path("data")
 
 
 @app.get("/download/{filename}")

@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FACES_DIR = ROOT / "src" / "fun_forge" / "static" / "faces"
+FACES_DIR = ROOT / "data" / "faces"
 MANIFEST = ROOT / "data" / "family_photos.json"
 
 

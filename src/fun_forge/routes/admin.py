@@ -222,7 +222,7 @@ async def update_album(
 
         # Handle cover art upload
         if cover_art and cover_art.filename:
-            covers_dir = Path("/app/src/fun_forge/static/covers")
+            covers_dir = settings.covers_dir
             covers_dir.mkdir(parents=True, exist_ok=True)
 
             # Save uploaded file
