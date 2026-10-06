@@ -1,6 +1,6 @@
 # Everything here is bind-mounted at runtime (docker-compose.yml) or not needed in the image.
-# data/ holds the live DB and the APK; static/faces/ holds the kids' photos from Immich.
-# None of it belongs in an image layer.
+# data/ holds the live DB, the APK, cover art and (data/faces/) the kids' photos from
+# Immich. None of it belongs in an image layer: the ghcr image is public.
 .git
 data/
 logs/
@@ -10,3 +10,5 @@ src/fun_forge/static/covers/
 **/__pycache__
 *.db
 *.db.backup
+.env
+.github/

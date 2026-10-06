@@ -37,7 +37,7 @@ class PodcastScanner:
         self.db = db
         self.podcast_dir = Path(settings.podcast_dir)
         self.allowed_extensions = settings.allowed_audio_extensions.split(",")
-        self.covers_dir = Path("/app/src/fun_forge/static/covers")
+        self.covers_dir = settings.covers_dir
         self.covers_dir.mkdir(parents=True, exist_ok=True)
 
     def scan_library(self) -> dict:

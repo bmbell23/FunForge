@@ -20,6 +20,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from PIL import Image
 
+from ..config import settings
 from ..database import get_db
 from ..models import Album
 from ..templating import templates
@@ -34,7 +35,7 @@ MATCH_LEVELS = [2, 3, 4, 6]
 # Written by scripts/sync_immich_faces.py, which runs on the host. The app never
 # talks to Immich itself — it reads this file and the cached thumbnails beside it,
 # so the family games keep working when Immich is down.
-FAMILY_MANIFEST = Path("/app/data/family_photos.json")
+FAMILY_MANIFEST = Path(settings.data_dir) / "family_photos.json"
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -98,7 +99,11 @@ def cover_hash(url_path: str):
     """Hash for a `/static/...` cover, or None if it can't be read. An unreadable
     cover is not a reason to drop an album from the board."""
     try:
-        disk = STATIC_DIR / url_path.removeprefix("/static/")
+        rel = url_path.removeprefix("/static/")
+        # Cover art is served from the data dir under its old /static/covers/
+        # address (main.py), so the paths stored in the DB never had to change.
+        disk = (settings.covers_dir / rel.removeprefix("covers/")
+                if rel.startswith("covers/") else STATIC_DIR / rel)
         return _cover_hash(str(disk), disk.stat().st_mtime)
     except (OSError, ValueError):
         return None

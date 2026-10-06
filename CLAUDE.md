@@ -159,7 +159,7 @@ source — `/games/api/pictures?source=family`. Adding a third source should mea
 another route, not another copy of `games/match.html`.
 
 **The app never talks to Immich.** `scripts/sync_immich_faces.py` runs on the
-*host* and caches thumbnails into `static/faces/` plus a manifest at
+*host* and caches thumbnails into `data/faces/` (served as `/static/faces/`) plus a manifest at
 `data/family_photos.json`; FunForge only ever reads its own disk. Two reasons:
 
 - The container is on its own bridge and genuinely cannot reach Immich — Docker's
@@ -176,7 +176,8 @@ off at `/games/photos/` before they can reach a board. The picker hides the fami
 tile until at least two photos are approved — a tile that opens onto an empty
 board is worse than no tile, because tapping it locks a kid into nothing.
 
-**This repo is public.** `static/faces/` is gitignored and must stay that way.
+**This repo is public.** `data/` (and with it `data/faces/`) is gitignored and
+`.dockerignore`d, and must stay that way: the ghcr image is public too.
 Pictures of the kids do not go to GitHub.
 
 ### Keeping playback alive across the UI

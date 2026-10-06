@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Paths that the user has explicitly deleted — stored outside the container mount
 # so they survive restarts. Paths are relative to music_dir (same as Track.file_path).
-EXCLUDED_PATHS_FILE = Path("/app/data/excluded_paths.txt")
+EXCLUDED_PATHS_FILE = Path(settings.data_dir) / "excluded_paths.txt"
 
 
 def get_excluded_paths() -> Set[str]:
@@ -39,7 +39,7 @@ class MusicScanner:
         self.music_dir = Path(settings.music_dir)
         self.allowed_extensions = settings.allowed_audio_extensions.split(',')
         # Create covers directory if it doesn't exist
-        self.covers_dir = Path("/app/src/fun_forge/static/covers")
+        self.covers_dir = settings.covers_dir
         self.covers_dir.mkdir(parents=True, exist_ok=True)
 
     def scan_library(self) -> dict:

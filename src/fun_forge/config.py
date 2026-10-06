@@ -27,6 +27,20 @@ class Settings(BaseSettings):
     # buttons, it is not an authentication boundary. Override with PARENT_PIN.
     parent_pin: str = "1234"
 
+    # Everything the app writes lives under here: the DB, the cover art the
+    # scanners extract, and the Immich face thumbnails. One directory means one
+    # volume (one PVC on k3s), and nothing written at runtime sits in the code
+    # tree, where a baked image would lose it on every restart (#35).
+    data_dir: str = "/app/data"
+
+    @property
+    def covers_dir(self) -> Path:
+        return Path(self.data_dir) / "covers"
+
+    @property
+    def faces_dir(self) -> Path:
+        return Path(self.data_dir) / "faces"
+
     # Scanning
     scan_on_startup: bool = True
     scan_interval_minutes: int = 60
