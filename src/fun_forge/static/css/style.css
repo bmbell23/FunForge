@@ -2330,6 +2330,7 @@ body:has(.game-shell) .header { display: none; }
         radial-gradient(circle at 40% 60%, rgba(255, 255, 255, 0.4) 0 1.5px, transparent 2px),
         linear-gradient(180deg, #0B1D4A 0%, #14398A 70%, #1E5BB8 100%);
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    isolation: isolate;     /* numbers < webs < spiders, whatever else is on the page */
 }
 .wc-grid {
     display: grid;
@@ -2349,10 +2350,11 @@ body:has(.game-shell) .header { display: none; }
     right: 0;
     text-align: center;
     color: #fff;
+    z-index: 2;             /* over the web overlay, so a slide never hides a number */
     font-size: max(24px, calc(var(--wc-cell, 44px) * 0.36));
     font-weight: 900;
     line-height: 1.1;
-    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    text-shadow: 0 0 3px #000, 0 0 3px #000, 0 1px 3px #000, 0 0 8px rgba(0, 0, 0, 0.8);
 }
 .wc-start {
     position: absolute;
@@ -2370,6 +2372,7 @@ body:has(.game-shell) .header { display: none; }
 .wc-web {
     position: absolute;
     inset: 0;
+    z-index: 1;
     pointer-events: none;
 }
 
@@ -2379,16 +2382,23 @@ body:has(.game-shell) .header { display: none; }
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    border: 2px solid #fff;
+    border: 3px solid #fff;
+    box-sizing: border-box;
+    z-index: 3;
     line-height: 1;
+    --wc-glow: 255, 255, 255;
     box-shadow: 0 3px 6px rgba(0, 0, 0, 0.45);
     transition-property: left, top;
     transition-timing-function: ease-in-out;
     pointer-events: none;
 }
-.wc-token[data-player="blue"] { background: radial-gradient(circle at 35% 30%, #4FC3F7, #0D47A1); }
-.wc-token[data-player="red"] { background: radial-gradient(circle at 35% 30%, #FF8A80, #C62828); }
-.wc-token-turn { animation: ttt-bounce 0.45s ease infinite alternate; z-index: 2; }
+.wc-token[data-player="blue"] { --wc-glow: 79, 195, 247; background: radial-gradient(circle at 35% 30%, #4FC3F7, #1565C0); }
+.wc-token[data-player="red"] { --wc-glow: 255, 138, 128; background: radial-gradient(circle at 35% 30%, #FF8A80, #D32F2F); }
+.wc-token-turn { animation: wc-glow 0.9s ease-in-out infinite alternate; z-index: 4; }
+@keyframes wc-glow {
+    from { box-shadow: 0 3px 6px rgba(0, 0, 0, 0.45), 0 0 8px 3px rgba(var(--wc-glow), 0.55); }
+    to   { box-shadow: 0 3px 6px rgba(0, 0, 0, 0.45), 0 0 20px 8px rgba(var(--wc-glow), 0.95); }
+}
 
 .wc-spin {
     flex: 0 0 auto;
@@ -2429,7 +2439,7 @@ body:has(.game-shell) .header { display: none; }
 
 /* Wide screens put the controls beside the board, so the board gets the height. */
 @media (min-aspect-ratio: 5/4) {
-    .wc-stage { flex-direction: row; align-items: stretch; gap: 16px; }
+    .wc-stage { flex-direction: row; align-items: stretch; justify-content: center; gap: 32px; }
     .wc-panel { flex: 0 0 min(40%, 380px); justify-content: center; }
     .wc-spin { width: 100%; }
 }

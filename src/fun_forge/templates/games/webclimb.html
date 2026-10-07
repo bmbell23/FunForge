@@ -36,13 +36,15 @@
     var COLS = 5, ROWS = 10, TOP = COLS * ROWS;
     var PADS = 0.7;             // the start pad below square 1, in cells
     var NAME = { blue: 'Blue spider', red: 'Red spider' };
-    var OFFSET = { blue: -0.22, red: 0.22 };    // side-by-side in a square, in cells
+    var SHARE = { blue: -0.19, red: 0.19 };     // sharing a square: side by side, in cells
+    var PAD_SHARE = { blue: -0.42, red: 0.42 }; // on the start pad there is room to spread
 
-    // Web zips go up, slides come down. Every jump is from a square a spider can
-    // land on to one it can't be sent onward from.
+    // Web zips go up, slides come down. Four of each, picked so no two cross or
+    // touch on the board (each spans two or three rows, none starts or ends on 1
+    // or 50, and no square is the end of two jumps).
     var JUMPS = {
-        3: 14, 8: 22, 19: 33, 28: 41, 36: 47,   // ladders
-        17: 6, 26: 12, 39: 24, 45: 30, 49: 35   // chutes
+        9: 18, 11: 21, 24: 33, 32: 42,          // ladders
+        14: 3, 36: 25, 40: 30, 48: 38           // chutes
     };
     window.WC_JUMPS = JUMPS;
 
@@ -170,17 +172,26 @@
         return { x: (c + 0.5) * cell, y: (ROWS - r - 0.5) * cell };
     }
 
-    function place(p, ms) {
+    /* Where a spider's token goes: its square's centre, nudged sideways when the
+       other spider is in the same square so both stay visible. */
+    function layout(p, ms) {
         var t = tokens[p];
-        var size = Math.round(cell * 0.46);
+        var other = p === 'blue' ? 'red' : 'blue';
+        var size = Math.round(cell * 0.65);
         var c = centre(pos[p]);
-        var spread = pos[p] === 0 ? 1.4 : 1;
+        var dx = 0;
+        if (pos[p] === 0) dx = PAD_SHARE[p];
+        else if (pos[other] === pos[p]) dx = SHARE[p];
         t.style.transitionDuration = ms ? (scaled(ms) / 1000) + 's' : '0s';
         t.style.width = size + 'px';
         t.style.height = size + 'px';
-        t.style.fontSize = Math.round(cell * 0.3) + 'px';
-        t.style.left = Math.round(c.x + OFFSET[p] * cell * spread - size / 2) + 'px';
+        t.style.fontSize = Math.round(size * 0.58) + 'px';
+        t.style.left = Math.round(c.x + dx * cell - size / 2) + 'px';
         t.style.top = Math.round(c.y + (pos[p] === 0 ? 0 : cell * 0.17) - size / 2) + 'px';
+    }
+    function place(p, ms) {
+        layout(p, ms);
+        layout(p === 'blue' ? 'red' : 'blue', 250);     // step aside, or back, as needed
     }
     function placeAll() { place('blue', 0); place('red', 0); }
 
@@ -188,6 +199,10 @@
        other boards: CSS can't keep a grid square when both sides can bind. */
     function applyShape() {
         var field = board.parentElement;
+        // Measure with the field free to fill its row, then (side by side only)
+        // shrink it to the board so the board and the panel sit together.
+        field.style.flex = '';
+        field.style.width = '';
         var side = Math.min(field.clientWidth / COLS, field.clientHeight / (ROWS + PADS));
         var size = Math.floor(side);
         if (size <= 0) return;
@@ -195,6 +210,10 @@
         board.style.setProperty('--wc-cell', cell + 'px');
         board.style.width = (cell * COLS) + 'px';
         board.style.height = Math.round(cell * (ROWS + PADS)) + 'px';
+        if (window.matchMedia('(min-aspect-ratio: 5/4)').matches) {
+            field.style.flex = '0 0 auto';
+            field.style.width = (cell * COLS) + 'px';
+        }
         startPad.style.top = (cell * ROWS) + 'px';
         startPad.style.width = (cell * 2) + 'px';
         startPad.style.height = Math.round(cell * PADS) + 'px';
@@ -215,47 +234,48 @@
         return el;
     }
 
-    /* A web zip: two white rails with strands across them. */
+    /* A web zip: two thick white rails with strands across them. */
     function drawLadder(g, a, b) {
         var dx = b.x - a.x, dy = b.y - a.y;
         var len = Math.sqrt(dx * dx + dy * dy);
         var ux = dx / len, uy = dy / len;
-        var px = -uy * cell * 0.15, py = ux * cell * 0.15;
-        var rails = Math.max(2, cell * 0.06);
-        var rungs = Math.max(2, Math.floor(len / (cell * 0.36)));
+        var px = -uy * cell * 0.17, py = ux * cell * 0.17;
+        var rail = Math.max(5, cell * 0.1);
+        var rungs = Math.max(3, Math.round(len / (cell * 0.34)));
+        [[rail + 3, 'rgba(0,20,60,0.55)'], [rail, '#fff']].forEach(function (st) {
+            [1, -1].forEach(function (s) {
+                svg('line', { x1: a.x + px * s, y1: a.y + py * s, x2: b.x + px * s, y2: b.y + py * s,
+                              stroke: st[1], 'stroke-width': st[0], 'stroke-linecap': 'round' }, g);
+            });
+        });
         for (var i = 1; i <= rungs; i++) {
             var t = i / (rungs + 1);
             var cx = a.x + dx * t, cy = a.y + dy * t;
             svg('line', { x1: cx + px, y1: cy + py, x2: cx - px, y2: cy - py,
-                          stroke: '#B3E5FC', 'stroke-width': Math.max(1.5, cell * 0.04),
+                          stroke: '#E1F5FE', 'stroke-width': Math.max(3, cell * 0.06),
                           'stroke-linecap': 'round' }, g);
         }
-        [1, -1].forEach(function (s) {
-            svg('line', { x1: a.x + px * s, y1: a.y + py * s, x2: b.x + px * s, y2: b.y + py * s,
-                          stroke: '#fff', 'stroke-width': rails, 'stroke-linecap': 'round' }, g);
-        });
-        svg('circle', { cx: b.x, cy: b.y, r: cell * 0.1, fill: '#fff' }, g);
     }
 
-    /* A slide: a wavy blue ribbon from the top (a) down to where it lets out (b). */
+    /* A slide: a ribbon with one gentle S-curve from the top (a) down to where it
+       lets out (b). */
     function drawChute(g, a, b) {
         var dx = b.x - a.x, dy = b.y - a.y;
         var len = Math.sqrt(dx * dx + dy * dy);
         var nx = -dy / len, ny = dx / len;
-        var waves = Math.max(1.5, len / (cell * 2.2));
-        var steps = Math.max(12, Math.ceil(len / (cell * 0.12)));
+        var steps = Math.max(16, Math.ceil(len / (cell * 0.1)));
         var d = '';
         for (var i = 0; i <= steps; i++) {
             var t = i / steps;
-            var off = Math.sin(t * Math.PI * 2 * waves) * Math.sin(t * Math.PI) * cell * 0.26;
+            var off = Math.sin(t * Math.PI * 2) * cell * 0.2;
             d += (i ? 'L' : 'M') + (a.x + dx * t + nx * off).toFixed(1) + ' ' +
                  (a.y + dy * t + ny * off).toFixed(1);
         }
         [['#0D47A1', 0.3], ['#26C6DA', 0.2], ['rgba(255,255,255,0.55)', 0.05]].forEach(function (s) {
-            svg('path', { d: d, fill: 'none', stroke: s[0], 'stroke-width': Math.max(2, cell * s[1]),
+            svg('path', { d: d, fill: 'none', stroke: s[0], 'stroke-width': Math.max(3, cell * s[1]),
                           'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, g);
         });
-        svg('circle', { cx: a.x, cy: a.y, r: cell * 0.17, fill: '#26C6DA', stroke: '#0D47A1',
+        svg('circle', { cx: a.x, cy: a.y, r: cell * 0.15, fill: '#26C6DA', stroke: '#0D47A1',
                         'stroke-width': Math.max(2, cell * 0.05) }, g);
     }
 
@@ -267,7 +287,7 @@
             var to = JUMPS[from];
             var up = to > +from;
             var g = svg('g', { 'class': up ? 'wc-ladder' : 'wc-chute', 'data-from': from, 'data-to': to,
-                               opacity: up ? 0.92 : 0.85 }, web);
+                               opacity: 0.8 }, web);
             if (up) drawLadder(g, centre(+from), centre(to));
             else drawChute(g, centre(+from), centre(to));
         });

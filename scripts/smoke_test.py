@@ -629,7 +629,7 @@ def run(page, errors):
     assert dims["font"] >= 24, f"square numbers are {dims['font']}px"
     assert dims["nums"] == [50, 49, 48, 47, 46, 41, 42, 43, 44, 45], f"top rows read {dims['nums']}"
     assert sorted(dims["tokens"]) == ["blue", "red"], f"tokens are {dims['tokens']}"
-    assert dims["jumps"] == 10, f"{dims['jumps']} chutes and ladders"
+    assert dims["jumps"] == 8, f"{dims['jumps']} chutes and ladders"
     ok(f"5x10 square board, spin button {dims['spinW']:.0f}x{dims['spinH']:.0f}, two spiders, nothing scrolls")
 
     def wc():
@@ -648,29 +648,41 @@ def run(page, errors):
     assert st["turn"] == "red", f"turn is {st['turn']}, not red"
     ok("mashing spin moves one spider once and passes the turn")
 
-    # A ladder: red rolls 3 onto the ladder bottom at 3 and zips to 14.
-    page.evaluate("WC_FORCE_ROLL(3)")
-    page.click("#wcSpin")
-    st = wc_settle()
-    assert st["pos"]["red"] == page.evaluate("WC_JUMPS[3]") == 14, f"red ended at {st['pos']['red']}, not 14"
-    assert st["turn"] == "blue", "turn did not return to blue"
-    ok("landing on a ladder bottom zips up to the top of it (3 -> 14)")
+    # The ladder and the chute come from the board itself, so the test can't
+    # drift from it: the first ladder (lowest bottom) and the first chute.
+    jumps = {int(k): v for k, v in page.evaluate("WC_JUMPS").items()}
+    ladder_from, ladder_to = next((k, v) for k, v in sorted(jumps.items()) if v > k)
+    chute_from, chute_to = next((k, v) for k, v in sorted(jumps.items()) if v < k)
 
-    # A chute: blue walks 2 -> 6 -> 12 (rolls 4, 6; neither lands on a ladder
-    # bottom), red shuffles along in between, then blue's 5 lands on 17.
-    for roll in (4, 6):
+    def wc_step(roll):
         page.evaluate(f"WC_FORCE_ROLL({roll})")
         page.click("#wcSpin")
-        wc_settle()
-        page.evaluate("WC_FORCE_ROLL(1)")
-        page.click("#wcSpin")
-        wc_settle()
-    assert wc()["pos"]["blue"] == 12 and wc()["turn"] == "blue", f"setup went wrong: {wc()}"
-    page.evaluate("WC_FORCE_ROLL(5)")
-    page.click("#wcSpin")
-    st = wc_settle()
-    assert st["pos"]["blue"] == page.evaluate("WC_JUMPS[17]") == 6, f"blue ended at {st['pos']['blue']}, not 6"
-    ok("landing on a chute top slides down to the bottom of it (17 -> 6)")
+        return wc_settle()
+
+    def wc_walk(who, target):
+        """Take turns until `who` rolls exactly onto `target` (a jump start).
+        Everyone else's rolls, and `who`'s on the way, dodge every jump."""
+        for _ in range(60):
+            st = wc()
+            here = st["pos"][st["turn"]]
+            if st["turn"] == who:
+                if target - here in range(1, 7):
+                    return wc_step(target - here)
+                roll = max(n for n in range(1, 7) if here + n < target and here + n not in jumps)
+            else:
+                roll = max(n for n in range(1, 7) if here + n not in jumps and here + n < 50)
+            wc_step(roll)
+        raise AssertionError(f"could not walk {who} to {target}: {wc()}")
+
+    # A ladder: red walks onto the bottom of the first ladder and zips up it.
+    st = wc_walk("red", ladder_from)
+    assert st["pos"]["red"] == ladder_to, f"red ended at {st['pos']['red']}, not {ladder_to}"
+    ok(f"landing on a ladder bottom zips up to the top of it ({ladder_from} -> {ladder_to})")
+
+    # A chute: blue walks onto the first chute's top and slides down.
+    st = wc_walk("blue", chute_from)
+    assert st["pos"]["blue"] == chute_to, f"blue ended at {st['pos']['blue']}, not {chute_to}"
+    ok(f"landing on a chute top slides down to the bottom of it ({chute_from} -> {chute_to})")
 
     # Both spiders to the top with forced rolls that dodge the chutes. Each one
     # must get a party; overshooting 50 is fine; and a fresh game follows.
