@@ -1,0 +1,468 @@
+{% extends "games/_shell.html" %}
+
+{% block game %}
+{# Chutes and ladders for two spiders passing the screen back and forth: blue
+   starts, red follows. One giant button spins; the number comes up big, the
+   spider hops that many squares, and a web zip carries it up or a slide whisks
+   it down. Nobody has to land on 50 exactly, nobody is ever sent back to the
+   start, and there are no scores or timers. When a spider reaches the top it
+   gets a party and is skipped from then on; when both are up there, a bigger
+   party and a fresh board. The confetti borrows Tic-Tac-Toe's styles. #}
+<div class="wc-stage">
+    <div class="wc-field">
+        <div id="wcBoard" class="wc-board" data-state="play" data-round="0" data-parties="0" aria-label="Web Climb board">
+            <div id="wcGrid" class="wc-grid"></div>
+            <div id="wcStart" class="wc-start">START</div>
+            <svg id="wcWeb" class="wc-web" aria-hidden="true"></svg>
+            <div id="wcTokens"></div>
+        </div>
+    </div>
+    <div class="wc-panel">
+        <div id="wcBanner" class="wc-banner" aria-live="polite">&nbsp;</div>
+        <button id="wcSpin" class="wc-spin" type="button" data-turn="blue">
+            <span id="wcDie" class="wc-die">🎲</span>
+            <span id="wcWho" class="wc-who">Blue spider<br>SPIN!</span>
+        </button>
+    </div>
+    <div id="wcConfetti" class="ttt-confetti" aria-hidden="true"></div>
+</div>
+{% endblock %}
+
+{% block game_js %}
+<script>
+(function () {
+    'use strict';
+
+    var COLS = 5, ROWS = 10, TOP = COLS * ROWS;
+    var PADS = 0.7;             // the start pad below square 1, in cells
+    var NAME = { blue: 'Blue spider', red: 'Red spider' };
+    var OFFSET = { blue: -0.22, red: 0.22 };    // side-by-side in a square, in cells
+
+    // Web zips go up, slides come down. Every jump is from a square a spider can
+    // land on to one it can't be sent onward from.
+    var JUMPS = {
+        3: 14, 8: 22, 19: 33, 28: 41, 36: 47,   // ladders
+        17: 6, 26: 12, 39: 24, 45: 30, 49: 35   // chutes
+    };
+    window.WC_JUMPS = JUMPS;
+
+    var SPIN_TICKS = 8;
+    var SPIN_MS = 90;       // per number flicked past
+    var HOP_MS = 260;
+    var JUMP_MS = 900;
+    var CHEER = 2400;
+    var CELEBRATE = 4500;
+
+    var board = document.getElementById('wcBoard');
+    var grid = document.getElementById('wcGrid');
+    var startPad = document.getElementById('wcStart');
+    var web = document.getElementById('wcWeb');
+    var tokenLayer = document.getElementById('wcTokens');
+    var banner = document.getElementById('wcBanner');
+    var spinBtn = document.getElementById('wcSpin');
+    var die = document.getElementById('wcDie');
+    var who = document.getElementById('wcWho');
+    var confetti = document.getElementById('wcConfetti');
+
+    var pos = { blue: 0, red: 0 };      // 0 = still on the start pad
+    var turn = 'blue';
+    var firstMover = 'red';             // flipped before each deal, so blue starts round one
+    var moving = false;
+    var finished = [];                  // who has reached 50, in order
+    var forced = null;                  // tests only: the next roll
+    var round = 0;
+    var parties = 0;
+    var cell = 0;
+    var tokens = {};
+    var pending = null;                 // the one timed step in flight: { fn, ms, id }
+
+    // Tests set window.FF_WC_FAST to run a whole game in a blink.
+    function scaled(ms) { return window.FF_WC_FAST ? Math.max(1, Math.round(ms * 0.02)) : ms; }
+
+    function later(fn, ms) {
+        cancel();
+        pending = { fn: fn, ms: ms, id: null };
+        arm();
+    }
+    function arm() {
+        if (!pending || pending.id !== null) return;
+        var p = pending;
+        p.id = setTimeout(function () {
+            if (pending === p) pending = null;
+            p.fn();
+        }, scaled(p.ms));
+    }
+    function cancel() {
+        if (pending && pending.id !== null) clearTimeout(pending.id);
+        pending = null;
+    }
+
+    // ---- sound ----------------------------------------------------------
+    // Synthesised, like the other games. Nothing here is ever a sad sound: even
+    // the slide down is a happy "wheee".
+
+    var audio = (function () {
+        var ctx = null;
+        function context() {
+            if (ctx) return ctx;
+            var Ctor = window.AudioContext || window.webkitAudioContext;
+            if (!Ctor) return null;
+            try { ctx = new Ctor(); } catch (e) { return null; }
+            return ctx;
+        }
+        /* One note, optionally gliding from f0 to f1 over its length. */
+        function tone(f0, f1, delay, dur, vol, type) {
+            var c = context();
+            if (!c) return;
+            if (c.state === 'suspended') { try { c.resume(); } catch (e) { return; } }
+            try {
+                var osc = c.createOscillator();
+                var gain = c.createGain();
+                var t0 = c.currentTime + delay;
+                osc.type = type || 'sine';
+                osc.frequency.setValueAtTime(f0, t0);
+                if (f1 !== f0) osc.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+                gain.gain.setValueAtTime(0.0001, t0);
+                gain.gain.linearRampToValueAtTime(vol, t0 + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+                osc.connect(gain);
+                gain.connect(c.destination);
+                osc.start(t0);
+                osc.stop(t0 + dur + 0.03);
+            } catch (e) { /* audio is a nicety, never a failure */ }
+        }
+        function note(f, delay, dur, vol) { tone(f, f, delay, dur, vol); }
+        return {
+            tick: function (i) { note(300 + (i % 4) * 40, 0, 0.06, 0.06); },
+            land: function () { note(660, 0, 0.12, 0.1); note(880, 0.1, 0.16, 0.1); },
+            // A rising blip per square, so a long hop counts itself out loud.
+            count: function (i) { note(440 + Math.min(i, 12) * 34, 0, 0.1, 0.09); },
+            zip: function () {
+                tone(380, 1500, 0, 0.7, 0.1, 'triangle');
+                tone(760, 3000, 0.05, 0.6, 0.04, 'sine');
+            },
+            wheee: function () {
+                tone(1100, 420, 0, 0.8, 0.1, 'sine');
+                tone(1650, 630, 0.08, 0.7, 0.05, 'triangle');
+            },
+            fanfare: function () {
+                [523, 659, 784, 1047, 1319].forEach(function (f, i) { note(f, i * 0.11, 0.3, 0.12); });
+            },
+            party: function () {
+                [523, 659, 784, 1047, 784, 1047, 1319, 1568].forEach(function (f, i) {
+                    note(f, i * 0.13, 0.34, 0.12);
+                });
+            },
+            hush: function () { if (ctx) { try { ctx.suspend(); } catch (e) {} } },
+            wake: function () { if (ctx) { try { ctx.resume(); } catch (e) {} } }
+        };
+    })();
+
+    // ---- geometry -------------------------------------------------------
+
+    /* Square n (1 at the bottom left, snaking up) -> its centre in board pixels.
+       Square 0 is the start pad under square 1. */
+    function centre(n) {
+        if (n === 0) return { x: cell * 1.0, y: cell * (ROWS + PADS / 2) };
+        var r = Math.floor((n - 1) / COLS);
+        var c = (n - 1) % COLS;
+        if (r % 2 === 1) c = COLS - 1 - c;
+        return { x: (c + 0.5) * cell, y: (ROWS - r - 0.5) * cell };
+    }
+
+    function place(p, ms) {
+        var t = tokens[p];
+        var size = Math.round(cell * 0.46);
+        var c = centre(pos[p]);
+        var spread = pos[p] === 0 ? 1.4 : 1;
+        t.style.transitionDuration = ms ? (scaled(ms) / 1000) + 's' : '0s';
+        t.style.width = size + 'px';
+        t.style.height = size + 'px';
+        t.style.fontSize = Math.round(cell * 0.3) + 'px';
+        t.style.left = Math.round(c.x + OFFSET[p] * cell * spread - size / 2) + 'px';
+        t.style.top = Math.round(c.y + (pos[p] === 0 ? 0 : cell * 0.17) - size / 2) + 'px';
+    }
+    function placeAll() { place('blue', 0); place('red', 0); }
+
+    /* Square the cells against the field, in JS for the same reason as the
+       other boards: CSS can't keep a grid square when both sides can bind. */
+    function applyShape() {
+        var field = board.parentElement;
+        var side = Math.min(field.clientWidth / COLS, field.clientHeight / (ROWS + PADS));
+        var size = Math.floor(side);
+        if (size <= 0) return;
+        cell = size;
+        board.style.setProperty('--wc-cell', cell + 'px');
+        board.style.width = (cell * COLS) + 'px';
+        board.style.height = Math.round(cell * (ROWS + PADS)) + 'px';
+        startPad.style.top = (cell * ROWS) + 'px';
+        startPad.style.width = (cell * 2) + 'px';
+        startPad.style.height = Math.round(cell * PADS) + 'px';
+        drawWeb();
+        placeAll();
+    }
+
+    window.addEventListener('resize', applyShape);
+    window.addEventListener('orientationchange', applyShape);
+
+    // ---- the webs -------------------------------------------------------
+
+    var SVGNS = 'http://www.w3.org/2000/svg';
+    function svg(tag, attrs, parent) {
+        var el = document.createElementNS(SVGNS, tag);
+        Object.keys(attrs).forEach(function (k) { el.setAttribute(k, attrs[k]); });
+        parent.appendChild(el);
+        return el;
+    }
+
+    /* A web zip: two white rails with strands across them. */
+    function drawLadder(g, a, b) {
+        var dx = b.x - a.x, dy = b.y - a.y;
+        var len = Math.sqrt(dx * dx + dy * dy);
+        var ux = dx / len, uy = dy / len;
+        var px = -uy * cell * 0.15, py = ux * cell * 0.15;
+        var rails = Math.max(2, cell * 0.06);
+        var rungs = Math.max(2, Math.floor(len / (cell * 0.36)));
+        for (var i = 1; i <= rungs; i++) {
+            var t = i / (rungs + 1);
+            var cx = a.x + dx * t, cy = a.y + dy * t;
+            svg('line', { x1: cx + px, y1: cy + py, x2: cx - px, y2: cy - py,
+                          stroke: '#B3E5FC', 'stroke-width': Math.max(1.5, cell * 0.04),
+                          'stroke-linecap': 'round' }, g);
+        }
+        [1, -1].forEach(function (s) {
+            svg('line', { x1: a.x + px * s, y1: a.y + py * s, x2: b.x + px * s, y2: b.y + py * s,
+                          stroke: '#fff', 'stroke-width': rails, 'stroke-linecap': 'round' }, g);
+        });
+        svg('circle', { cx: b.x, cy: b.y, r: cell * 0.1, fill: '#fff' }, g);
+    }
+
+    /* A slide: a wavy blue ribbon from the top (a) down to where it lets out (b). */
+    function drawChute(g, a, b) {
+        var dx = b.x - a.x, dy = b.y - a.y;
+        var len = Math.sqrt(dx * dx + dy * dy);
+        var nx = -dy / len, ny = dx / len;
+        var waves = Math.max(1.5, len / (cell * 2.2));
+        var steps = Math.max(12, Math.ceil(len / (cell * 0.12)));
+        var d = '';
+        for (var i = 0; i <= steps; i++) {
+            var t = i / steps;
+            var off = Math.sin(t * Math.PI * 2 * waves) * Math.sin(t * Math.PI) * cell * 0.26;
+            d += (i ? 'L' : 'M') + (a.x + dx * t + nx * off).toFixed(1) + ' ' +
+                 (a.y + dy * t + ny * off).toFixed(1);
+        }
+        [['#0D47A1', 0.3], ['#26C6DA', 0.2], ['rgba(255,255,255,0.55)', 0.05]].forEach(function (s) {
+            svg('path', { d: d, fill: 'none', stroke: s[0], 'stroke-width': Math.max(2, cell * s[1]),
+                          'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, g);
+        });
+        svg('circle', { cx: a.x, cy: a.y, r: cell * 0.17, fill: '#26C6DA', stroke: '#0D47A1',
+                        'stroke-width': Math.max(2, cell * 0.05) }, g);
+    }
+
+    function drawWeb() {
+        while (web.firstChild) web.removeChild(web.firstChild);
+        web.setAttribute('width', board.style.width);
+        web.setAttribute('height', board.style.height);
+        Object.keys(JUMPS).forEach(function (from) {
+            var to = JUMPS[from];
+            var up = to > +from;
+            var g = svg('g', { 'class': up ? 'wc-ladder' : 'wc-chute', 'data-from': from, 'data-to': to,
+                               opacity: up ? 0.92 : 0.85 }, web);
+            if (up) drawLadder(g, centre(+from), centre(to));
+            else drawChute(g, centre(+from), centre(to));
+        });
+    }
+
+    // ---- drawing --------------------------------------------------------
+
+    function setBanner(text, extra) {
+        banner.textContent = text;
+        banner.className = 'wc-banner' + (extra ? ' ' + extra : '');
+    }
+
+    function syncButton() {
+        spinBtn.disabled = moving || board.dataset.state !== 'play';
+        spinBtn.dataset.turn = turn;
+        ['blue', 'red'].forEach(function (p) {
+            tokens[p].classList.toggle('wc-token-turn', p === turn && !moving && board.dataset.state === 'play');
+        });
+    }
+
+    function showTurn() {
+        die.textContent = '🎲';
+        who.innerHTML = NAME[turn] + '<br>SPIN!';
+        setBanner(NAME[turn] + "'s turn!");
+        syncButton();
+    }
+
+    function build() {
+        grid.innerHTML = '';
+        for (var i = 0; i < TOP; i++) {
+            // Cells go in reading order from the top-left; the rows snake, so each
+            // cell's number is worked out from its row counted up from the bottom.
+            var r = Math.floor(i / COLS);                       // 0 = top row
+            var c = i % COLS;
+            var fromBottom = ROWS - 1 - r;
+            var n = fromBottom * COLS + (fromBottom % 2 === 1 ? COLS - c : c + 1);
+            var sq = document.createElement('div');
+            sq.className = 'wc-square';
+            sq.dataset.n = n;
+            var num = document.createElement('span');
+            num.className = 'wc-num';
+            num.textContent = n;
+            sq.appendChild(num);
+            grid.appendChild(sq);
+        }
+        ['blue', 'red'].forEach(function (p) {
+            var t = document.createElement('div');
+            t.className = 'wc-token';
+            t.dataset.player = p;
+            t.textContent = '🕷️';
+            t.setAttribute('aria-label', NAME[p]);
+            tokens[p] = t;
+            tokenLayer.appendChild(t);
+        });
+        applyShape();
+    }
+
+    function sparkles(bits, count) {
+        confetti.innerHTML = '';
+        for (var i = 0; i < count; i++) {
+            var el = document.createElement('span');
+            el.className = 'ttt-bit';
+            el.textContent = bits[Math.floor(Math.random() * bits.length)];
+            el.style.left = Math.floor(Math.random() * 92) + '%';
+            el.style.animationDelay = (Math.random() * 0.6).toFixed(2) + 's';
+            confetti.appendChild(el);
+        }
+    }
+
+    // ---- play -----------------------------------------------------------
+
+    function deal() {
+        cancel();
+        confetti.innerHTML = '';
+        pos = { blue: 0, red: 0 };
+        finished = [];
+        moving = false;
+        forced = null;
+        round++;
+        board.dataset.round = round;
+        board.dataset.state = 'play';
+        // Friends take turns at going first, game by game.
+        firstMover = firstMover === 'blue' ? 'red' : 'blue';
+        turn = firstMover;
+        placeAll();
+        showTurn();
+    }
+
+    function spin() {
+        // Taps while a spider is on the move, or the page is hidden, count for nothing.
+        if (moving || document.hidden || board.dataset.state !== 'play') return;
+        moving = true;
+        syncButton();
+        var roll = forced !== null ? forced : 1 + Math.floor(Math.random() * 6);
+        forced = null;
+        who.innerHTML = NAME[turn] + '<br>…';
+        spinning(turn, roll, 0);
+    }
+
+    function spinning(p, roll, i) {
+        if (i < SPIN_TICKS) {
+            die.textContent = String(1 + Math.floor(Math.random() * 6));
+            audio.tick(i);
+            later(function () { spinning(p, roll, i + 1); }, SPIN_MS);
+            return;
+        }
+        die.textContent = String(roll);
+        who.innerHTML = NAME[p] + '<br>rolled ' + roll + '!';
+        setBanner(NAME[p] + ' rolled ' + roll + '!');
+        audio.land();
+        var target = Math.min(TOP, pos[p] + roll);     // no exact finish: past the top is the top
+        later(function () { hop(p, target, 0); }, 600);
+    }
+
+    function hop(p, target, count) {
+        if (pos[p] >= target) { landed(p); return; }
+        pos[p]++;
+        place(p, HOP_MS);
+        audio.count(count);
+        later(function () { hop(p, target, count + 1); }, HOP_MS + 40);
+    }
+
+    function landed(p) {
+        var to = JUMPS[pos[p]];
+        if (!to) { arrived(p); return; }
+        later(function () {
+            var up = to > pos[p];
+            setBanner(up ? 'Zip! Up the web! 🕸️' : 'Wheee! Down the slide! 🌀');
+            if (up) audio.zip(); else audio.wheee();
+            pos[p] = to;
+            place(p, JUMP_MS);
+            later(function () { arrived(p); }, JUMP_MS + 150);
+        }, 300);
+    }
+
+    function arrived(p) {
+        if (pos[p] >= TOP) { reachedTop(p); return; }
+        passTurn(p);
+    }
+
+    function reachedTop(p) {
+        finished.push(p);
+        sparkles(['✨', '⭐', '🕸️', '🕷️', '💙', '🎉'], 18);
+        audio.fanfare();
+        setBanner(NAME[p] + ' made it to the top! 🎉', 'wc-banner-win');
+        later(function () {
+            if (finished.length >= 2) { bigParty(); return; }
+            passTurn(p);
+        }, CHEER);
+    }
+
+    function bigParty() {
+        parties++;
+        board.dataset.parties = parties;
+        board.dataset.state = 'party';
+        sparkles(['🎉', '⭐', '✨', '🕸️', '🕷️', '💙', '❤️', '🎈'], 36);
+        audio.party();
+        setBanner('Both spiders made it! 🎉🕷️🕷️🎉', 'wc-banner-win');
+        syncButton();
+        later(deal, CELEBRATE);
+    }
+
+    /* Hand over to the other spider, unless it is already up top — then the one
+       still climbing just keeps going. */
+    function passTurn(p) {
+        var next = p === 'blue' ? 'red' : 'blue';
+        if (finished.indexOf(next) >= 0) next = p;
+        turn = next;
+        moving = false;
+        confetti.innerHTML = '';
+        showTurn();
+    }
+
+    spinBtn.addEventListener('click', spin);
+
+    // Test hooks. WC_FORCE_ROLL(n) fixes the next roll; WC_STATE() reads the game.
+    window.WC_FORCE_ROLL = function (n) { forced = n; };
+    window.WC_STATE = function () {
+        return { turn: turn, pos: { blue: pos.blue, red: pos.red }, moving: moving, finished: finished.slice() };
+    };
+
+    // ---- shell hooks ----------------------------------------------------
+    // Pausing drops the timer, not the step: the next one is re-armed on resume,
+    // so a spider mid-hop waits where it is instead of finishing off-screen.
+
+    if (window.FunForgeGame) {
+        window.FunForgeGame.onPause(function () {
+            if (pending && pending.id !== null) { clearTimeout(pending.id); pending.id = null; }
+            audio.hush();
+        });
+        window.FunForgeGame.onResume(function () { arm(); audio.wake(); });
+    }
+
+    build();
+    deal();
+})();
+</script>
+{% endblock %}
