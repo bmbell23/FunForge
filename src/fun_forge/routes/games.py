@@ -173,6 +173,17 @@ async def checkers(request: Request):
     )
 
 
+@router.get("/web-climb/", response_class=HTMLResponse)
+async def web_climb(request: Request):
+    """Web Climb: chutes and ladders for two spiders, spin and climb to the top.
+    The ladders and slides live in the template, like the other games' rules."""
+    return templates.TemplateResponse(
+        request,
+        "games/webclimb.html",
+        {"title": "Web Climb"},
+    )
+
+
 @router.get("/spell/", response_class=HTMLResponse)
 async def spell(request: Request):
     """Spell It: a picture, its letters, and a garden that grows. The word list

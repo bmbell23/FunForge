@@ -584,6 +584,147 @@ def run(page, errors):
     assert not errors, "JS errors in Checkers: " + "; ".join(errors)
     ok("no JS errors while playing")
 
+    # ---- web climb -----------------------------------------------------------
+    section("Web Climb (spin, hop, zip up, slide down)")
+    page.evaluate("localStorage.removeItem('funforge_unlocked')")
+    go("/games/")
+    assert page.locator(".game-card-web").count() == 1, "the picker has no Web Climb tile"
+    assert "Web Climb" in page.locator(".game-card-web").inner_text(), "tile is mislabelled"
+    ok("the picker shows the Web Climb tile")
+
+    errors.clear()
+    page.click(".game-card-web")
+    page.wait_for_selector(".wc-square")
+    page.wait_for_timeout(500)
+    assert "/games/web-climb/" in page.url, f"tile went to {page.url}"
+    assert page.evaluate("getComputedStyle(document.querySelector('.header')).display") == "none", \
+        "the shared header is visible inside Web Climb"
+    for _ in range(4):
+        page.go_back()
+        page.wait_for_timeout(250)
+    assert "/games/web-climb/" in page.url, f"Back escaped Web Climb — now at {page.url}"
+    ok("Back can't leave Web Climb either")
+
+    dims = page.evaluate("""() => {
+        const rs = [...document.querySelectorAll('.wc-square')].map(c => c.getBoundingClientRect());
+        const spin = document.getElementById('wcSpin').getBoundingClientRect();
+        return {
+            n: rs.length,
+            skew: Math.max(...rs.map(r => Math.abs(r.width - r.height))),
+            over: document.body.scrollHeight - innerHeight,
+            wide: document.documentElement.scrollWidth - innerWidth,
+            spinW: spin.width, spinH: spin.height,
+            spinBottom: spin.bottom - innerHeight,
+            font: parseFloat(getComputedStyle(document.querySelector('.wc-num')).fontSize),
+            nums: [...document.querySelectorAll('.wc-square')].map(c => +c.dataset.n).slice(0, 10),
+            tokens: [...document.querySelectorAll('.wc-token')].map(t => t.dataset.player),
+            jumps: Object.keys(window.WC_JUMPS).length,
+        };
+    }""")
+    assert dims["n"] == 50, f"board has {dims['n']} squares"
+    assert dims["skew"] <= 2, f"squares are {dims['skew']}px off square"
+    assert dims["over"] <= 0 and dims["wide"] <= 0, "the page scrolls"
+    assert dims["spinBottom"] <= 0, "the spin button is off the bottom of the screen"
+    assert dims["spinW"] >= 80 and dims["spinH"] >= 80, f"spin button is {dims['spinW']}x{dims['spinH']}"
+    assert dims["font"] >= 24, f"square numbers are {dims['font']}px"
+    assert dims["nums"] == [50, 49, 48, 47, 46, 41, 42, 43, 44, 45], f"top rows read {dims['nums']}"
+    assert sorted(dims["tokens"]) == ["blue", "red"], f"tokens are {dims['tokens']}"
+    assert dims["jumps"] == 8, f"{dims['jumps']} chutes and ladders"
+    ok(f"5x10 square board, spin button {dims['spinW']:.0f}x{dims['spinH']:.0f}, two spiders, nothing scrolls")
+
+    def wc():
+        return page.evaluate("WC_STATE()")
+
+    def wc_settle():
+        page.wait_for_function("!WC_STATE().moving", timeout=5000)
+        return wc()
+
+    # Mash the button: one roll, one spider moves, and the turn passes to red.
+    page.evaluate("window.FF_WC_FAST = true; WC_FORCE_ROLL(2)")
+    assert wc()["turn"] == "blue", "blue should start"
+    page.evaluate("() => { const b = document.getElementById('wcSpin'); for (let i = 0; i < 10; i++) b.click(); }")
+    st = wc_settle()
+    assert st["pos"] == {"blue": 2, "red": 0}, f"ten taps moved the spiders to {st['pos']}"
+    assert st["turn"] == "red", f"turn is {st['turn']}, not red"
+    ok("mashing spin moves one spider once and passes the turn")
+
+    # The ladder and the chute come from the board itself, so the test can't
+    # drift from it: the first ladder (lowest bottom) and the first chute.
+    jumps = {int(k): v for k, v in page.evaluate("WC_JUMPS").items()}
+    ladder_from, ladder_to = next((k, v) for k, v in sorted(jumps.items()) if v > k)
+    chute_from, chute_to = next((k, v) for k, v in sorted(jumps.items()) if v < k)
+
+    def wc_step(roll):
+        page.evaluate(f"WC_FORCE_ROLL({roll})")
+        page.click("#wcSpin")
+        return wc_settle()
+
+    def wc_walk(who, target):
+        """Take turns until `who` rolls exactly onto `target` (a jump start).
+        Everyone else's rolls, and `who`'s on the way, dodge every jump."""
+        for _ in range(60):
+            st = wc()
+            here = st["pos"][st["turn"]]
+            if st["turn"] == who:
+                if target - here in range(1, 7):
+                    return wc_step(target - here)
+                roll = max(n for n in range(1, 7) if here + n < target and here + n not in jumps)
+            else:
+                roll = max(n for n in range(1, 7) if here + n not in jumps and here + n < 50)
+            wc_step(roll)
+        raise AssertionError(f"could not walk {who} to {target}: {wc()}")
+
+    # A ladder: red walks onto the bottom of the first ladder and zips up it.
+    st = wc_walk("red", ladder_from)
+    assert st["pos"]["red"] == ladder_to, f"red ended at {st['pos']['red']}, not {ladder_to}"
+    ok(f"landing on a ladder bottom zips up to the top of it ({ladder_from} -> {ladder_to})")
+
+    # A chute: blue walks onto the first chute's top and slides down.
+    st = wc_walk("blue", chute_from)
+    assert st["pos"]["blue"] == chute_to, f"blue ended at {st['pos']['blue']}, not {chute_to}"
+    ok(f"landing on a chute top slides down to the bottom of it ({chute_from} -> {chute_to})")
+
+    # Both spiders to the top with forced rolls that dodge the chutes. Each one
+    # must get a party; overshooting 50 is fine; and a fresh game follows.
+    result = page.evaluate("""async () => {
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const board = document.getElementById('wcBoard');
+        const banner = document.getElementById('wcBanner');
+        const J = window.WC_JUMPS;
+        const round = board.dataset.round;
+        const seen = { top: new Set(), party: false };
+        for (let guard = 0; board.dataset.round === round; guard++) {
+            if (guard > 20000) throw new Error('the game never finished');
+            const s = WC_STATE();
+            const m = banner.textContent.match(/(Blue|Red) spider made it to the top/);
+            if (m) seen.top.add(m[1]);
+            if (/Both spiders made it/.test(banner.textContent)) seen.party = true;
+            if (!s.moving && board.dataset.state === 'play' && s.finished.length < 2) {
+                const p = s.pos[s.turn];
+                let roll = 1;
+                for (let n = 6; n >= 1; n--) {
+                    const t = Math.min(50, p + n);
+                    if (!(J[t] && J[t] < t)) { roll = n; break; }
+                }
+                // Past 50 on purpose once the spider is close: the overshoot rule.
+                if (p >= 45) roll = 6;
+                WC_FORCE_ROLL(roll);
+                document.getElementById('wcSpin').click();
+            }
+            await sleep(1);
+        }
+        return { top: [...seen.top].sort(), party: seen.party, parties: board.dataset.parties,
+                 state: WC_STATE() };
+    }""")
+    assert result["top"] == ["Blue", "Red"], f"parties seen for {result['top']}"
+    assert result["party"] and result["parties"] == "1", f"no big party: {result}"
+    assert result["state"]["pos"] == {"blue": 0, "red": 0} and result["state"]["finished"] == [], \
+        f"a fresh game wasn't dealt: {result['state']}"
+    ok("each spider reaching 50 gets a party, both get a big one, then a fresh game starts")
+
+    assert not errors, "JS errors in Web Climb: " + "; ".join(errors)
+    ok("no JS errors while playing")
+
     # ---- spell it ------------------------------------------------------------
     section("Spell It (a picture, its letters, a garden that only grows)")
     page.evaluate("localStorage.removeItem('funforge_unlocked')")
