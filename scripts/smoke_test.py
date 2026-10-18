@@ -940,7 +940,7 @@ def run(page, errors):
         for (let i = 0; i < 400; i++) {
             const x = st.left + 40 + Math.random() * (st.width - 80);
             const y = st.top + 40 + Math.random() * (st.height - 80);
-            if (bs.every(r => Math.hypot(x - (r.left + r.width / 2), y - (r.top + r.height / 2)) > r.width / 2 + 40))
+            if (bs.every(r => Math.hypot(x - (r.left + r.width / 2), y - (r.top + r.height / 2)) > r.width / 2 + 70))
                 return { x, y };
         }
         return null;
@@ -952,6 +952,33 @@ def run(page, errors):
     assert page.locator(".bub-bubble[data-kind=finger]").count() == before + 1, \
         "tapping empty space did not make a bubble"
     ok("tapping empty space makes a small bubble under the finger")
+
+    # A real fingertip lands low, and late on a rising bubble (#40): a touch just
+    # under the rim, and one just beside it, still pop the bubble aimed at.
+    for label, ox, oy in (("under", 0, 22), ("beside", 20, 0)):
+        pops_before = stage_num("pops")
+        hit = page.evaluate("""([ox, oy]) => {
+            const st = document.getElementById('bubStage');
+            const sr = st.getBoundingClientRect();
+            const el = [...st.querySelectorAll('.bub-bubble')].find(e => {
+                const r = e.getBoundingClientRect();
+                return e.dataset.kind !== 'finger' && r.top > sr.top + 20 && r.bottom < sr.bottom - 60
+                    && r.left > sr.left + 40 && r.right < sr.right - 40;
+            });
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            const x = r.left + r.width / 2 + (ox ? r.width / 2 + ox : 0);
+            const y = r.top + r.height / 2 + (oy ? r.height / 2 + oy : 0);
+            st.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 40, pointerType: 'touch',
+                isPrimary: true, bubbles: true, cancelable: true, clientX: x, clientY: y, width: 20, height: 20 }));
+            return el.dataset.id;
+        }""", [ox, oy])
+        assert hit, "no bubble clear of the edges to aim at"
+        page.wait_for_timeout(100)
+        assert page.locator(f".bub-bubble[data-id='{hit}']").count() == 0, \
+            f"a touch just {label} the rim did not pop the bubble"
+        assert stage_num("pops") == pops_before + 1, f"the {label}-the-rim pop was not counted"
+    ok("a touch just under or beside the rim still pops the bubble aimed at")
 
     # Several fingers at once: three simultaneous pointers, each with its own id.
     pops_before = stage_num("pops")
