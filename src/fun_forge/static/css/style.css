@@ -2262,7 +2262,6 @@ body:has(.game-shell) .header { display: none; }
 }
 
 /* The game turns the colour of whoever's go it is (blue dogs, red cats). */
-.game-shell[data-chk-turn] { transition: background 0.5s ease; }
 .game-shell[data-chk-turn="dog"] { background: linear-gradient(160deg, #01579B 0%, #29B6F6 100%); }
 .game-shell[data-chk-turn="cat"] { background: linear-gradient(160deg, #B71C1C 0%, #FF7043 100%); }
 

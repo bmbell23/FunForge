@@ -548,7 +548,6 @@ def run(page, errors):
     assert page.locator(".chk-square").nth(33).get_attribute("data-piece") == "dog", "dog did not move"
     assert "🐱" in page.locator("#chkBanner").inner_text(), "turn did not pass to the cat"
     ok("tap a piece, its moves glow, tap a glow to move, and the turn passes")
-    page.wait_for_timeout(600)                          # let the background fade finish
     cat_turn, cat_bg = shell_turn()
     assert cat_turn == "cat" and cat_bg != dog_bg, f"the background did not change for the cat ({cat_turn})"
     assert movable() == [], f"cats get no hint, but {movable()} glow"
