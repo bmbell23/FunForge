@@ -560,17 +560,35 @@
         else if (b.critter === 'gift' && b.kind !== 'surprise') openSurprise(x, y);
     }
 
-    /* The bubble under a finger, if any. The hit area is a little fatter than the
-       bubble: small hands are not precise, and a near miss that spawns a new
-       bubble instead of popping the one aimed at feels like a broken toy. */
-    function pick(x, y) {
-        var best = null, bestScore = 1;
-        for (var i = bubbles.length - 1; i >= 0; i--) {
-            var b = bubbles[i];
-            var dx = x - bx(b);
-            var dy = y - b.y;
-            var score = Math.sqrt(dx * dx + dy * dy) / (b.r + 10);
-            if (score < bestScore) { best = b; bestScore = score; }
+    /* The bubble under a finger, if any. The maths was never off (a synthetic tap
+       on a drawn centre pops 15 out of 15); fingers are. A fingertip registers
+       below where the eye aimed, the bubble keeps rising while the finger comes
+       down, and a near miss spawns a new bubble right beside the target, which
+       reads as "it tapped next to it". So a tap inside a bubble pops the one
+       whose middle it is nearest, exactly as drawn. Only a miss gets the help:
+       the finger is a disc, not a point; it is nudged up by AIM_LIFT; and each
+       bubble counts as the stretch it rose over in the last LAG seconds. */
+    var AIM_LIFT = 10, LAG = 0.15, SLACK = 18;
+    function pick(x, y, reach) {
+        var best = null, bestScore = 1, i, b, dx, dy;
+        for (i = bubbles.length - 1; i >= 0; i--) {
+            b = bubbles[i];
+            dx = x - bx(b);
+            dy = y - b.y;
+            var inside = Math.sqrt(dx * dx + dy * dy) / b.r;
+            if (inside < bestScore) { best = b; bestScore = inside; }
+        }
+        if (best) return best;
+
+        var bestEdge = (reach || 14) + SLACK;
+        for (i = bubbles.length - 1; i >= 0; i--) {
+            b = bubbles[i];
+            dx = x - bx(b);
+            dy = y - AIM_LIFT - b.y;
+            var back = Math.max(0, b.vy) * LAG;                  // where it was a moment ago, below
+            dy = dy < 0 ? dy : Math.max(0, dy - back);
+            var edge = Math.sqrt(dx * dx + dy * dy) - b.r;
+            if (edge < bestEdge) { best = b; bestEdge = edge; }
         }
         return best;
     }
@@ -675,7 +693,9 @@
             if (walker.jump <= 0) { walker.jump = 0.7; walker.def.sound(); }
             return;
         }
-        var hit = pick(x, y);
+        // Contact size, where the device reports one (a mouse says 1x1).
+        var contact = Math.min(32, Math.max(10, Math.max(e.width || 0, e.height || 0) / 2));
+        var hit = pick(x, y, contact);
         if (hit) { pop(hit); return; }
         add({ d: Math.round(rand(46, 64)), x: x, y: y, kind: 'finger', critter: '' });
         audio.pip();
