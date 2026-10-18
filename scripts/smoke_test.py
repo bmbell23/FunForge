@@ -522,6 +522,24 @@ def run(page, errors):
         return page.eval_on_selector_all(
             ".chk-square", "els => els.flatMap((e, i) => e.classList.contains('chk-target') ? [i] : [])")
     assert "🐶" in page.locator("#chkBanner").inner_text(), "dog should start"
+
+    # #42: the game turns blue for the dogs and red for the cats, and the dogs
+    # (a two-year-old's side) glow wherever there is a legal move.
+    def movable():
+        return page.eval_on_selector_all(
+            ".chk-square", "els => els.flatMap((e, i) => e.classList.contains('chk-movable') ? [i] : [])")
+    def shell_turn():
+        return page.evaluate("""() => { const s = document.querySelector('.game-shell');
+            return [s.dataset.chkTurn, getComputedStyle(s).backgroundImage]; }""")
+    dog_turn, dog_bg = shell_turn()
+    assert dog_turn == "dog", f"the shell says it is {dog_turn}'s turn"
+    assert movable() == [40, 42, 44, 46], f"opening: the front-row dogs should glow, got {movable()}"
+    sq.nth(40).click()
+    assert movable() == [], "the hint glow stayed on after a dog was picked"
+    sq.nth(40).click()
+    assert movable() == [40, 42, 44, 46], "putting the dog back down did not bring the glow back"
+    ok("dog's turn: the game is blue and every dog that can move glows")
+
     sq.nth(17).click()                                  # a cat, on the dog's turn: ignored
     assert glowing() == [], "picking the other side's piece lit up moves"
     sq.nth(40).click()
@@ -530,6 +548,11 @@ def run(page, errors):
     assert page.locator(".chk-square").nth(33).get_attribute("data-piece") == "dog", "dog did not move"
     assert "🐱" in page.locator("#chkBanner").inner_text(), "turn did not pass to the cat"
     ok("tap a piece, its moves glow, tap a glow to move, and the turn passes")
+    page.wait_for_timeout(600)                          # let the background fade finish
+    cat_turn, cat_bg = shell_turn()
+    assert cat_turn == "cat" and cat_bg != dog_bg, f"the background did not change for the cat ({cat_turn})"
+    assert movable() == [], f"cats get no hint, but {movable()} glow"
+    ok("cat's turn: the game turns red, and the cats get no hint")
 
     sq.nth(19).click()
     sq.nth(26).click()

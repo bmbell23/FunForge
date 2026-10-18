@@ -26,10 +26,15 @@
     var N = 8;
     var PIECE = { dog: '🐶', cat: '🐱' };
     var CELEBRATE = 3000;
+    // Who gets the "these can move" glow: the dogs are a two-year-old's side.
+    var HINT = { dog: true, cat: false };
 
     var board = document.getElementById('chkBoard');
     var banner = document.getElementById('chkBanner');
     var confetti = document.getElementById('chkConfetti');
+    // The whole game turns the colour of whoever's go it is: a kid who can't
+    // read the banner can still see the room go blue or red.
+    var shell = board.closest('.game-shell');
 
     // cells[i] is null or { who: 'dog' | 'cat', king: bool }; i = row * 8 + col,
     // row 0 at the top. Dogs move up (row - 1), cats move down.
@@ -175,7 +180,17 @@
         banner.className = 'ttt-banner' + (extra ? ' ' + extra : '');
     }
 
-    function showTurn() { setBanner(PIECE[turn] + "'s turn!"); }
+    function showTurn() {
+        setBanner(PIECE[turn] + "'s turn!");
+        if (shell) shell.dataset.chkTurn = turn;
+    }
+
+    /* Pieces that would glow: the side to move, if it gets the hint, and only
+       before anything is picked, so the glow never competes with the targets. */
+    function hinted(i) {
+        return HINT[turn] && selected < 0 && chaining < 0 && board.dataset.state === 'play' &&
+            cells[i] && cells[i].who === turn && Object.keys(movesFrom(i)).length > 0;
+    }
 
     function draw(i) {
         var sq = squares[i];
@@ -185,6 +200,7 @@
         sq.removeAttribute('data-king');
         sq.classList.toggle('chk-selected', i === selected);
         sq.classList.toggle('chk-target', targets.hasOwnProperty(i));
+        sq.classList.toggle('chk-movable', !!hinted(i));
         if (!p) return;
         sq.dataset.piece = p.who;
         if (p.king) sq.dataset.king = '1';
@@ -328,6 +344,7 @@
     function finish(who) {
         board.dataset.state = 'cheer';
         board.dataset.winner = who;
+        drawAll();                      // drop the glow: nobody is moving now
         setBanner(PIECE[who] + ' wins! 🎉', 'ttt-banner-win');
         confettiBurst(['🎉', '⭐', '✨', '🎈', '👑', PIECE[who]]);
         audio.win();
