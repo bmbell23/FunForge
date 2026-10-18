@@ -564,26 +564,31 @@
        on a drawn centre pops 15 out of 15); fingers are. A fingertip registers
        below where the eye aimed, the bubble keeps rising while the finger comes
        down, and a near miss spawns a new bubble right beside the target, which
-       reads as "it tapped next to it". So: the finger is a disc, not a point; it
-       is nudged up by AIM_LIFT; each bubble counts as the stretch it rose over in
-       the last LAG seconds; and a tap inside a bubble beats one that only grazes
-       a bigger neighbour. */
+       reads as "it tapped next to it". So a tap inside a bubble pops the one
+       whose middle it is nearest, exactly as drawn. Only a miss gets the help:
+       the finger is a disc, not a point; it is nudged up by AIM_LIFT; and each
+       bubble counts as the stretch it rose over in the last LAG seconds. */
     var AIM_LIFT = 10, LAG = 0.15, SLACK = 18;
     function pick(x, y, reach) {
-        var best = null, bestScore = Infinity;
-        y -= AIM_LIFT;
-        reach = (reach || 14) + SLACK;
-        for (var i = bubbles.length - 1; i >= 0; i--) {
-            var b = bubbles[i];
-            var dx = x - bx(b);
-            var dy = y - b.y;
+        var best = null, bestScore = 1, i, b, dx, dy;
+        for (i = bubbles.length - 1; i >= 0; i--) {
+            b = bubbles[i];
+            dx = x - bx(b);
+            dy = y - b.y;
+            var inside = Math.sqrt(dx * dx + dy * dy) / b.r;
+            if (inside < bestScore) { best = b; bestScore = inside; }
+        }
+        if (best) return best;
+
+        var bestEdge = (reach || 14) + SLACK;
+        for (i = bubbles.length - 1; i >= 0; i--) {
+            b = bubbles[i];
+            dx = x - bx(b);
+            dy = y - AIM_LIFT - b.y;
             var back = Math.max(0, b.vy) * LAG;                  // where it was a moment ago, below
             dy = dy < 0 ? dy : Math.max(0, dy - back);
-            var dist = Math.sqrt(dx * dx + dy * dy);
-            var edge = dist - b.r;
-            if (edge > reach) continue;
-            var score = edge <= 0 ? dist / b.r - 1 : edge / reach;
-            if (score < bestScore) { best = b; bestScore = score; }
+            var edge = Math.sqrt(dx * dx + dy * dy) - b.r;
+            if (edge < bestEdge) { best = b; bestEdge = edge; }
         }
         return best;
     }
