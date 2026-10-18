@@ -563,6 +563,10 @@ def run(page, errors):
     assert 33 in movable(), "a capturing dog should also count as movable"
     assert page.locator(".chk-square").nth(33).locator(".chk-badge").count() == 1, "the capturing dog has no star"
     assert page.locator(".chk-badge").count() == 1, "a star on a dog that can't capture"
+    faded = page.evaluate("""() => [...document.querySelectorAll('.chk-square')].map((e, i) =>
+        e.dataset.piece === 'dog' && !e.classList.contains('chk-movable')
+            ? +getComputedStyle(e.querySelector('.chk-piece')).opacity : null).filter(o => o !== null)""")
+    assert faded and max(faded) < 0.6, f"the dogs that can't move should fade back, opacities {faded}"
     sq.nth(33).click()
     assert having("chk-jump") == [19] and having("chk-prey") == [26], \
         f"picked: the jump should star 19 and the cat at 26 wobble, got {having('chk-jump')} / {having('chk-prey')}"

@@ -2274,7 +2274,11 @@ body:has(.game-shell) .header { display: none; }
 }
 .chk-movable .chk-piece {
     animation: chk-hop 0.7s ease-in-out infinite alternate;
-    box-shadow: 0 0 0 4px #FFFFFF, 0 0 18px rgba(255, 255, 255, 0.95);
+    box-shadow: 0 0 0 4px #FFEB3B, 0 0 0 7px #FFFFFF, 0 0 22px rgba(255, 255, 255, 0.95);
+}
+.chk-board[data-hint] .chk-square[data-piece]:not(.chk-movable) .chk-piece {
+    opacity: 0.4;
+    filter: grayscale(0.7);
 }
 @keyframes chk-hop {
     from { transform: translateY(0) scale(1); }
@@ -2290,7 +2294,7 @@ body:has(.game-shell) .header { display: none; }
 }
 .chk-capture .chk-piece {
     animation: chk-hop-big 0.4s ease-in-out infinite alternate;
-    box-shadow: 0 0 0 5px #FFD600, 0 0 26px #FFAB00;
+    box-shadow: 0 0 0 5px #FF6D00, 0 0 0 9px #FFEA00, 0 0 30px #FFAB00;
 }
 @keyframes chk-hop-big {
     from { transform: translateY(0) scale(1.05) rotate(-6deg); }
