@@ -185,11 +185,24 @@
         if (shell) shell.dataset.chkTurn = turn;
     }
 
-    /* Pieces that would glow: the side to move, if it gets the hint, and only
-       before anything is picked, so the glow never competes with the targets. */
-    function hinted(i) {
-        return HINT[turn] && selected < 0 && chaining < 0 && board.dataset.state === 'play' &&
-            cells[i] && cells[i].who === turn && Object.keys(movesFrom(i)).length > 0;
+    /* How loudly square i is hinted: 0 not at all, 1 this piece can move, 2 it
+       can take a cat. Only for the side that gets the hint, and only before
+       anything is picked, so the hint never competes with the targets. */
+    function hintLevel(i) {
+        if (!HINT[turn] || selected >= 0 || chaining >= 0 || board.dataset.state !== 'play') return 0;
+        if (!cells[i] || cells[i].who !== turn) return 0;
+        var moves = movesFrom(i), keys = Object.keys(moves);
+        if (!keys.length) return 0;
+        return keys.some(function (k) { return moves[k] >= 0; }) ? 2 : 1;
+    }
+
+    // Once a hinted piece is picked, its jumps get a star and the cat it would
+    // take wobbles, so "this one eats a cat" reads at a glance.
+    function prey() {
+        var out = {};
+        if (!HINT[turn]) return out;
+        Object.keys(targets).forEach(function (k) { if (targets[k] >= 0) out[targets[k]] = +k; });
+        return out;
     }
 
     function draw(i) {
@@ -200,7 +213,11 @@
         sq.removeAttribute('data-king');
         sq.classList.toggle('chk-selected', i === selected);
         sq.classList.toggle('chk-target', targets.hasOwnProperty(i));
-        sq.classList.toggle('chk-movable', !!hinted(i));
+        var level = hintLevel(i);
+        sq.classList.toggle('chk-movable', level >= 1);
+        sq.classList.toggle('chk-capture', level === 2);
+        sq.classList.toggle('chk-jump', HINT[turn] && targets.hasOwnProperty(i) && targets[i] >= 0);
+        sq.classList.toggle('chk-prey', prey().hasOwnProperty(i));
         if (!p) return;
         sq.dataset.piece = p.who;
         if (p.king) sq.dataset.king = '1';
@@ -213,10 +230,22 @@
             crown.textContent = '👑';
             disc.appendChild(crown);
         }
+        if (level === 2) {
+            var badge = document.createElement('span');
+            badge.className = 'chk-badge';
+            badge.textContent = '⭐';
+            disc.appendChild(badge);
+        }
         sq.appendChild(disc);
     }
 
-    function drawAll() { for (var i = 0; i < N * N; i++) draw(i); }
+    function drawAll() {
+        for (var i = 0; i < N * N; i++) draw(i);
+        // While a hint is showing, the pieces that can't move fade back, which
+        // is what makes the ones that can stand out.
+        var hinting = HINT[turn] && selected < 0 && chaining < 0 && board.dataset.state === 'play';
+        if (hinting) board.dataset.hint = '1'; else board.removeAttribute('data-hint');
+    }
 
     function build() {
         board.innerHTML = '';

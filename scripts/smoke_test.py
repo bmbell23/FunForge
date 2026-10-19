@@ -555,7 +555,23 @@ def run(page, errors):
 
     sq.nth(19).click()
     sq.nth(26).click()
+    # #45: a dog that can take a cat is the loudest square on the board.
+    def having(cls):
+        return page.eval_on_selector_all(
+            ".chk-square", f"els => els.flatMap((e, i) => e.classList.contains('{cls}') ? [i] : [])")
+    assert having("chk-capture") == [33], f"only the dog at 33 can take a cat, got {having('chk-capture')}"
+    assert 33 in movable(), "a capturing dog should also count as movable"
+    assert page.locator(".chk-square").nth(33).locator(".chk-badge").count() == 1, "the capturing dog has no star"
+    assert page.locator(".chk-badge").count() == 1, "a star on a dog that can't capture"
+    faded = page.evaluate("""() => [...document.querySelectorAll('.chk-square')].map((e, i) =>
+        e.dataset.piece === 'dog' && !e.classList.contains('chk-movable')
+            ? +getComputedStyle(e.querySelector('.chk-piece')).opacity : null).filter(o => o !== null)""")
+    assert faded and max(faded) < 0.6, f"the dogs that can't move should fade back, opacities {faded}"
     sq.nth(33).click()
+    assert having("chk-jump") == [19] and having("chk-prey") == [26], \
+        f"picked: the jump should star 19 and the cat at 26 wobble, got {having('chk-jump')} / {having('chk-prey')}"
+    assert having("chk-capture") == [], "the capture hint stayed on after picking"
+    ok("a dog that can take a cat flashes with a star; picked, its jump gets a star and the cat wobbles")
     assert sorted(glowing()) == [19, 24], f"dog at 33 should glow the jump 19 and the step 24, got {glowing()}"
     sq.nth(19).click()
     pieces = page.eval_on_selector_all(".chk-square", "els => els.map(e => e.dataset.piece || '')")
