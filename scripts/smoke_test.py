@@ -402,9 +402,17 @@ def run(page, errors):
     page.click("#tttFriends")
     page.wait_for_timeout(200)
     assert not page.locator("#tttChoice").is_visible(), "the choice stayed up after picking"
+    def ttt_turn():
+        return page.evaluate("""() => { const s = document.querySelector('.game-shell');
+            return [s.dataset.turn, getComputedStyle(s).backgroundImage]; }""")
     assert "🐶" in page.locator("#tttBanner").inner_text(), "dog should start"
+    dog_turn, dog_bg = ttt_turn()
     page.locator(".ttt-cell").nth(0).click()
     assert "🐱" in page.locator("#tttBanner").inner_text(), "banner did not pass the turn to the cat"
+    cat_turn, cat_bg = ttt_turn()
+    assert (dog_turn, cat_turn) == ("dog", "cat") and dog_bg != cat_bg, \
+        f"the background didn't follow the turn: {dog_turn} -> {cat_turn}"
+    ok("the screen is blue on the dog's turn and red on the cat's (#47)")
     page.locator(".ttt-cell").nth(0).click()       # filled: ignored
     page.locator(".ttt-cell").nth(1).click()
     pieces = page.eval_on_selector_all(".ttt-cell", "els => els.map(e => e.dataset.piece || '')")
@@ -530,7 +538,7 @@ def run(page, errors):
             ".chk-square", "els => els.flatMap((e, i) => e.classList.contains('chk-movable') ? [i] : [])")
     def shell_turn():
         return page.evaluate("""() => { const s = document.querySelector('.game-shell');
-            return [s.dataset.chkTurn, getComputedStyle(s).backgroundImage]; }""")
+            return [s.dataset.turn, getComputedStyle(s).backgroundImage]; }""")
     dog_turn, dog_bg = shell_turn()
     assert dog_turn == "dog", f"the shell says it is {dog_turn}'s turn"
     assert movable() == [40, 42, 44, 46], f"opening: the front-row dogs should glow, got {movable()}"
