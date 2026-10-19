@@ -718,6 +718,25 @@ def run(page, errors):
     assert wide["sides"] and wide["centred"], f"dials should flank a centred board at 1366x768: {wide}"
     assert wide["dials"] >= 120 and wide["skew"] <= 2, f"wide dials {wide['dials']}px, squares {wide['skew']}px off"
     ok(f"at 1366x768 the dials ({wide['dials']:.0f}px) flank the board and nothing scrolls")
+
+    # #54: a landscape tablet under browser bars is just under 5:4. It must still
+    # get the dials on the sides and a board that runs (nearly) the full height.
+    for vp in ({"width": 980, "height": 800}, {"width": 1100, "height": 900}):
+        page.set_viewport_size(vp)
+        page.wait_for_timeout(300)
+        tab = page.evaluate("""() => {
+            const r = s => document.querySelector(s).getBoundingClientRect();
+            const bd = r('#wcBoard'), bl = r('.wc-dial[data-player=blue]'), rd = r('.wc-dial[data-player=red]');
+            return { sides: bl.right <= bd.left && rd.left >= bd.right, tall: bd.height / innerHeight,
+                     over: document.body.scrollHeight - innerHeight };
+        }""")
+        assert tab["sides"], f"at {vp} the dials are not either side of the board: {tab}"
+        assert tab["tall"] >= 0.85, f"at {vp} the board is only {tab['tall']:.0%} of the height"
+        assert tab["over"] <= 0, f"Web Climb scrolls at {vp}"
+    ok(f"landscape tablet sizes: dials on the sides, board {tab['tall']:.0%} of the height")
+    vis = page.evaluate("getComputedStyle(document.getElementById('wcBanner')).visibility")
+    assert vis == "hidden", f"the turn banner is showing during play ({vis})"
+    ok("no turn banner during play: the lit dial says whose go it is")
     page.set_viewport_size(portrait)
     page.wait_for_timeout(300)
 
@@ -790,6 +809,15 @@ def run(page, errors):
         wedge, shown = under_pointer(who)
         assert wedge == n and shown == n, f"rolled {n} but the pointer is on {wedge} (data-value {shown})"
     ok("a forced roll lands that number's wedge under the pointer")
+    tilt = page.evaluate("""() => [...document.querySelectorAll('.wc-dial')].flatMap(d => {
+        const w = new DOMMatrix(getComputedStyle(d.querySelector('.wc-wheel')).transform);
+        return [...d.querySelectorAll('.wc-wedge-num')].map(n => {
+            const m = w.multiply(new DOMMatrix(getComputedStyle(n).transform));
+            return Math.abs(Math.atan2(m.b, m.a) * 180 / Math.PI);
+        });
+    })""")
+    assert max(tilt) < 1, f"dial numerals are tilted up to {max(tilt):.1f} degrees after a spin"
+    ok("the dial numerals stay upright however the wheel stops (a tilted 1 reads as a 7)")
 
     # The ladder and the chute come from the board itself, so the test can't
     # drift from it: the first ladder (lowest bottom) and the first chute.

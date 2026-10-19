@@ -205,7 +205,22 @@
 
     /* Square the cells against the field, in JS for the same reason as the
        other boards: CSS can't keep a grid square when both sides can bind. */
+    /* Stack the dials under the board, or put them either side of it: whichever
+       leaves the bigger cells. Mirrors the two --wc-dial sizes in the CSS. */
+    function pickLayout() {
+        var stage = board.closest('.wc-stage');
+        var w = stage.clientWidth - 12, h = stage.clientHeight - 12;
+        var vw = window.innerWidth / 100, vh = window.innerHeight / 100;
+        var tall = ROWS + PADS;
+        var dStack = Math.max(120, Math.min(40 * vw, 18 * vh, 170));
+        var dWide = Math.max(120, Math.min(26 * vw, 46 * vh, 280));
+        var stacked = Math.min(w / COLS, (h - dStack - 8) / tall);
+        var wide = Math.min((w - 2 * dWide - 48) / COLS, (h + 48) / tall);
+        stage.classList.toggle('wc-wide', wide > stacked);
+    }
+
     function applyShape() {
+        pickLayout();
         var field = board.parentElement;
         var side = Math.min(field.clientWidth / COLS, field.clientHeight / (ROWS + PADS));
         var size = Math.floor(side);
@@ -427,6 +442,7 @@
             var t = Math.min(1, elapsed / total);
             var turned = from + delta * (1 - Math.pow(1 - t, 3));
             wheel.style.transform = 'rotate(' + turned.toFixed(2) + 'deg)';
+            wheel.style.setProperty('--wc-turned', turned.toFixed(2) + 'deg');
             var k = Math.floor(turned / 60);
             if (k !== pegs) { pegs = k; audio.tick(k); }    // slows down with the wheel
             if (t < 1) { later(frame, FRAME_MS); return; }
