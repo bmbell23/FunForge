@@ -2211,10 +2211,12 @@ body:has(.game-shell) .header { display: none; }
 }
 
 /* Two-player games turn the whole screen the colour of whoever's go it is:
-   blue dogs, red cats. A kid who can't read the banner can still see it. The
-   game sets data-turn on its shell. */
-.game-shell[data-turn="dog"] { background: linear-gradient(160deg, #01579B 0%, #29B6F6 100%); }
-.game-shell[data-turn="cat"] { background: linear-gradient(160deg, #B71C1C 0%, #FF7043 100%); }
+   blue dogs / blue spiders, red cats / red spiders. A kid who can't read the
+   banner can still see it. The game sets data-turn on its shell. */
+.game-shell[data-turn="dog"],
+.game-shell[data-turn="blue"] { background: linear-gradient(160deg, #01579B 0%, #29B6F6 100%); }
+.game-shell[data-turn="cat"],
+.game-shell[data-turn="red"] { background: linear-gradient(160deg, #B71C1C 0%, #FF7043 100%); }
 
 /* ---- checkers ---- */
 /* Eight squares a side can't make 80px targets on a phone, so the squares are
@@ -2348,35 +2350,41 @@ body:has(.game-shell) .header { display: none; }
    pad, sized in JS (--wc-cell) because the field is the only box that knows both
    the width and the height to spare. Tokens and the web overlay are positioned
    in pixels over the grid, so a token can glide from square to square. */
+/* The dials are sized here, in CSS, off the screen (--wc-dial); the board takes
+   whatever they and the banner leave over. */
 .wc-stage {
     flex: 1;
     min-height: 0;
     position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
+    display: grid;
+    /* Portrait: the board, the banner, then blue's dial bottom-left and red's
+       bottom-right. */
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-areas: "field field" "banner banner" "blue red";
+    justify-items: center;
+    align-items: center;
     padding: 6px;
     gap: 8px;
+    --wc-dial: max(120px, min(40vw, 18vh, 170px));
 }
 
 .wc-field {
-    flex: 1;
+    grid-area: field;
+    width: 100%;
+    height: 100%;
     min-height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-.wc-panel {
-    flex: 0 0 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
 /* Fixed height, so a long message never changes the room the board has. */
 .wc-banner {
-    height: 76px;
+    grid-area: banner;
+    width: 100%;
+    box-sizing: border-box;
+    height: 64px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2471,48 +2479,122 @@ body:has(.game-shell) .header { display: none; }
     to   { box-shadow: 0 3px 6px rgba(0, 0, 0, 0.45), 0 0 20px 8px rgba(var(--wc-glow), 0.95); }
 }
 
-.wc-spin {
-    flex: 0 0 auto;
-    width: min(100%, 440px);
-    min-height: 120px;
-    align-self: center;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
+/* A dial: six wedges in shades of its spider's colour, a pointer that stays put
+   at the top, and a wheel that turns under it (the angle is set in JS). Every
+   size comes off --wc-dial so the numerals and hub stay in proportion. */
+.wc-dial {
+    position: relative;
+    width: var(--wc-dial);
+    height: var(--wc-dial);
+    padding: 0;
     border: 4px solid #fff;
-    border-radius: 28px;
+    border-radius: 50%;
+    box-sizing: border-box;
+    background: none;
     color: #fff;
-    font-size: 28px;
-    font-weight: 900;
-    line-height: 1.1;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
     cursor: pointer;
-    transition: transform 0.1s ease, filter 0.2s ease;
+    margin-top: 12px;       /* room for the pointer above the rim */
+    -webkit-tap-highlight-color: transparent;
+    --wc-glow: 255, 255, 255;
+    transition: opacity 0.25s ease, filter 0.25s ease;
 }
-.wc-spin[data-turn="blue"] { background: linear-gradient(135deg, #0D47A1 0%, #29B6F6 100%); }
-.wc-spin[data-turn="red"] { background: linear-gradient(135deg, #B71C1C 0%, #FF7043 100%); }
-.wc-spin:active:not(:disabled) { transform: scale(0.97); }
-.wc-spin:disabled { cursor: default; filter: saturate(0.7) brightness(0.9); }
-.wc-die {
-    min-width: 76px;
-    height: 76px;
+.wc-dial[data-player="blue"] { grid-area: blue; --wc-glow: 79, 195, 247; --wc-a: #0D47A1; --wc-b: #1976D2; --wc-c: #039BE5; }
+.wc-dial[data-player="red"] { grid-area: red; --wc-glow: 255, 138, 128; --wc-a: #B71C1C; --wc-b: #D32F2F; --wc-c: #E64A19; }
+.wc-dial:not(.wc-dial-live) { opacity: 0.35; filter: grayscale(1); cursor: default; }
+/* A glow, not a scale: the dial stays put under a finger (and a test's click). */
+.wc-dial-ready { animation: wc-dial-pulse 0.9s ease-in-out infinite alternate; }
+@keyframes wc-dial-pulse {
+    from { box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4), 0 0 10px 3px rgba(var(--wc-glow), 0.5); }
+    to   { box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4), 0 0 28px 12px rgba(var(--wc-glow), 0.95); }
+}
+
+.wc-wheel {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    background: conic-gradient(var(--wc-a) 0 60deg, var(--wc-b) 60deg 120deg, var(--wc-c) 120deg 180deg,
+                               var(--wc-a) 180deg 240deg, var(--wc-b) 240deg 300deg, var(--wc-c) 300deg 360deg);
+}
+/* Out from the centre along the wedge's middle; the numeral turns with it. */
+.wc-wedge-num {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(var(--wc-angle)) translateY(calc(var(--wc-dial) * -0.33));
+    font-size: max(24px, calc(var(--wc-dial) * 0.2));
+    font-weight: 900;
+    line-height: 1;
+    text-shadow: 0 0 3px #000, 0 1px 3px #000, 0 0 8px rgba(0, 0, 0, 0.7);
+}
+.wc-hub {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(var(--wc-dial) * 0.26);
+    height: calc(var(--wc-dial) * 0.26);
+    transform: translate(-50%, -50%);
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.92);
-    color: #0D47A1;
-    font-size: 52px;
-    font-weight: 900;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+    font-size: calc(var(--wc-dial) * 0.16);
+    line-height: 1;
 }
-.wc-who { text-align: left; }
+.wc-pointer {
+    position: absolute;
+    left: 50%;
+    top: -14px;
+    transform: translateX(-50%);
+    z-index: 2;
+    border-left: 12px solid transparent;
+    border-right: 12px solid transparent;
+    border-top: 26px solid #FFD54F;
+    filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.6));
+}
+/* The rolled number, big, where the hub is, until the turn moves on. */
+.wc-rolled {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 3;
+    width: 56%;
+    height: 56%;
+    transform: translate(-50%, -50%) scale(0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #FFF176;
+    color: #4A2C00;
+    font-size: calc(var(--wc-dial) * 0.4);
+    font-weight: 900;
+    line-height: 1;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+}
+.wc-dial-popped .wc-rolled { animation: wc-pop 0.5s ease-out forwards; }
+@keyframes wc-pop {
+    0%   { transform: translate(-50%, -50%) scale(0); }
+    60%  { transform: translate(-50%, -50%) scale(1.35); }
+    80%  { transform: translate(-50%, -50%) scale(0.92); }
+    100% { transform: translate(-50%, -50%) scale(1); }
+}
 
-/* Wide screens put the controls beside the board, so the board gets the height. */
+/* Wide screens put the dials either side of the board: blue on the left, red on
+   the right, the banner above the board. */
 @media (min-aspect-ratio: 5/4) {
-    .wc-stage { flex-direction: row; align-items: stretch; justify-content: center; gap: 32px; }
-    .wc-panel { flex: 0 0 min(40%, 380px); justify-content: center; }
-    .wc-spin { width: 100%; }
+    .wc-stage {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-rows: auto minmax(0, 1fr);
+        grid-template-areas: "blue banner red" "blue field red";
+        column-gap: 24px;
+        --wc-dial: max(120px, min(26vw, 46vh, 280px));
+    }
+    .wc-dial[data-player="blue"], .wc-dial[data-player="red"] { align-self: center; }
 }
 
 /* ---- spell it ---- */
