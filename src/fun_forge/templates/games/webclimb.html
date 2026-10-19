@@ -205,7 +205,22 @@
 
     /* Square the cells against the field, in JS for the same reason as the
        other boards: CSS can't keep a grid square when both sides can bind. */
+    /* Stack the dials under the board, or put them either side of it: whichever
+       leaves the bigger cells. Mirrors the two --wc-dial sizes in the CSS. */
+    function pickLayout() {
+        var stage = board.closest('.wc-stage');
+        var w = stage.clientWidth - 12, h = stage.clientHeight - 12;
+        var vw = window.innerWidth / 100, vh = window.innerHeight / 100;
+        var banner = 64 + 8, tall = ROWS + PADS;
+        var dStack = Math.max(120, Math.min(40 * vw, 18 * vh, 170));
+        var dWide = Math.max(120, Math.min(26 * vw, 46 * vh, 280));
+        var stacked = Math.min(w / COLS, (h - banner - dStack - 8) / tall);
+        var wide = Math.min((w - 2 * dWide - 48) / COLS, (h - banner) / tall);
+        stage.classList.toggle('wc-wide', wide > stacked);
+    }
+
     function applyShape() {
+        pickLayout();
         var field = board.parentElement;
         var side = Math.min(field.clientWidth / COLS, field.clientHeight / (ROWS + PADS));
         var size = Math.floor(side);

@@ -2584,18 +2584,18 @@ body:has(.game-shell) .header { display: none; }
     100% { transform: translate(-50%, -50%) scale(1); }
 }
 
-/* Wide screens put the dials either side of the board: blue on the left, red on
-   the right, the banner above the board. */
-@media (min-aspect-ratio: 5/4) {
-    .wc-stage {
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        grid-template-rows: auto minmax(0, 1fr);
-        grid-template-areas: "blue banner red" "blue field red";
-        column-gap: 24px;
-        --wc-dial: max(120px, min(26vw, 46vh, 280px));
-    }
-    .wc-dial[data-player="blue"], .wc-dial[data-player="red"] { align-self: center; }
+/* Wide puts the dials either side of the board: blue on the left, red on the
+   right, the banner above the board. The game picks it in JS (pickLayout) by
+   which layout gives the bigger board, not by an aspect-ratio query: a landscape
+   tablet under browser bars sits just below 5:4 and got the phone stack (#54). */
+.wc-stage.wc-wide {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "blue banner red" "blue field red";
+    column-gap: 24px;
+    --wc-dial: max(120px, min(26vw, 46vh, 280px));
 }
+.wc-wide .wc-dial[data-player="blue"], .wc-wide .wc-dial[data-player="red"] { align-self: center; }
 
 /* ---- spell it ---- */
 .spell-stage {
