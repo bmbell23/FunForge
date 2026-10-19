@@ -2210,6 +2210,12 @@ body:has(.game-shell) .header { display: none; }
     to { transform: translateY(125vh) rotate(360deg); }
 }
 
+/* Two-player games turn the whole screen the colour of whoever's go it is:
+   blue dogs, red cats. A kid who can't read the banner can still see it. The
+   game sets data-turn on its shell. */
+.game-shell[data-turn="dog"] { background: linear-gradient(160deg, #01579B 0%, #29B6F6 100%); }
+.game-shell[data-turn="cat"] { background: linear-gradient(160deg, #B71C1C 0%, #FF7043 100%); }
+
 /* ---- checkers ---- */
 /* Eight squares a side can't make 80px targets on a phone, so the squares are
    as big as the screen allows (measured in JS as --chk-cell) and the pieces
@@ -2261,9 +2267,6 @@ body:has(.game-shell) .header { display: none; }
     box-shadow: 0 0 0 4px #FFF176, 0 0 18px rgba(255, 241, 118, 0.95);
 }
 
-/* The game turns the colour of whoever's go it is (blue dogs, red cats). */
-.game-shell[data-chk-turn="dog"] { background: linear-gradient(160deg, #01579B 0%, #29B6F6 100%); }
-.game-shell[data-chk-turn="cat"] { background: linear-gradient(160deg, #B71C1C 0%, #FF7043 100%); }
 
 /* The dogs' handicap, in two volumes. A dog that can move lights its whole
    square up and bounces; a dog that can take a cat flashes orange, bounces

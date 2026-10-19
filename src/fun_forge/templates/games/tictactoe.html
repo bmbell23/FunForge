@@ -30,6 +30,8 @@
     var CELEBRATE = 2500;
 
     var board = document.getElementById('tttBoard');
+    // Blue for the dogs, red for the cats (Robo plays the cats), as in Checkers.
+    var shell = board.closest('.game-shell');
     var banner = document.getElementById('tttBanner');
     var choice = document.getElementById('tttChoice');
     var confetti = document.getElementById('tttConfetti');
@@ -172,6 +174,7 @@
     }
 
     function showTurn() {
+        if (shell) shell.dataset.turn = turn;
         if (mode === 'robo') {
             setBanner(turn === 'dog' ? 'Your turn! 🐶' : '🤖 Robo is thinking…');
         } else {
