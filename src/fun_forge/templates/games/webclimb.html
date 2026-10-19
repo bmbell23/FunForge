@@ -2,9 +2,10 @@
 
 {% block game %}
 {# Chutes and ladders for two spiders passing the screen back and forth: blue
-   starts, red follows. One giant button spins; the number comes up big, the
-   spider hops that many squares, and a web zip carries it up or a slide whisks
-   it down. Nobody has to land on 50 exactly, nobody is ever sent back to the
+   starts, red follows. Each spider has its own spinning dial; only the dial of
+   whoever's go it is answers a tap. The wheel whirls round and stops on a
+   number, which pops up big, then the spider hops that many squares, and a web
+   zip carries it up or a slide whisks it down. Nobody has to land on 50 exactly, nobody is ever sent back to the
    start, and there are no scores or timers. When a spider reaches the top it
    gets a party and is skipped from then on; when both are up there, a bigger
    party and a fresh board. The confetti borrows Tic-Tac-Toe's styles. #}
@@ -17,13 +18,19 @@
             <div id="wcTokens"></div>
         </div>
     </div>
-    <div class="wc-panel">
-        <div id="wcBanner" class="wc-banner" aria-live="polite">&nbsp;</div>
-        <button id="wcSpin" class="wc-spin" type="button" data-turn="blue">
-            <span id="wcDie" class="wc-die">🎲</span>
-            <span id="wcWho" class="wc-who">Blue spider<br>SPIN!</span>
-        </button>
-    </div>
+    <div id="wcBanner" class="wc-banner" aria-live="polite">&nbsp;</div>
+    <button id="wcDialBlue" class="wc-dial" type="button" data-player="blue" aria-label="Blue spider's dial">
+        <span class="wc-pointer"></span>
+        <span class="wc-wheel"></span>
+        <span class="wc-hub">🕷️</span>
+        <span class="wc-rolled"></span>
+    </button>
+    <button id="wcDialRed" class="wc-dial" type="button" data-player="red" aria-label="Red spider's dial">
+        <span class="wc-pointer"></span>
+        <span class="wc-wheel"></span>
+        <span class="wc-hub">🕷️</span>
+        <span class="wc-rolled"></span>
+    </button>
     <div id="wcConfetti" class="ttt-confetti" aria-hidden="true"></div>
 </div>
 {% endblock %}
@@ -48,8 +55,9 @@
     };
     window.WC_JUMPS = JUMPS;
 
-    var SPIN_TICKS = 8;
-    var SPIN_MS = 90;       // per number flicked past
+    var SPIN_MS = 1600;     // the wheel's whole whirl
+    var SPIN_TURNS = 4;     // full turns before it settles
+    var FRAME_MS = 16;
     var HOP_MS = 260;
     var JUMP_MS = 900;
     var CHEER = 2400;
@@ -61,9 +69,8 @@
     var web = document.getElementById('wcWeb');
     var tokenLayer = document.getElementById('wcTokens');
     var banner = document.getElementById('wcBanner');
-    var spinBtn = document.getElementById('wcSpin');
-    var die = document.getElementById('wcDie');
-    var who = document.getElementById('wcWho');
+    var shell = board.closest('.game-shell');
+    var dials = { blue: document.getElementById('wcDialBlue'), red: document.getElementById('wcDialRed') };
     var confetti = document.getElementById('wcConfetti');
 
     var pos = { blue: 0, red: 0 };      // 0 = still on the start pad
@@ -76,6 +83,7 @@
     var parties = 0;
     var cell = 0;
     var tokens = {};
+    var rotation = { blue: 0, red: 0 }; // each wheel's total turn so far, in degrees
     var pending = null;                 // the one timed step in flight: { fn, ms, id }
 
     // Tests set window.FF_WC_FAST to run a whole game in a blink.
@@ -135,7 +143,7 @@
         }
         function note(f, delay, dur, vol) { tone(f, f, delay, dur, vol); }
         return {
-            tick: function (i) { note(300 + (i % 4) * 40, 0, 0.06, 0.06); },
+            tick: function (i) { note(300 + (i % 4) * 40, 0, 0.05, 0.06); },   // a peg clicking past the pointer
             land: function () { note(660, 0, 0.12, 0.1); note(880, 0.1, 0.16, 0.1); },
             // A rising blip per square, so a long hop counts itself out loud.
             count: function (i) { note(440 + Math.min(i, 12) * 34, 0, 0.1, 0.09); },
@@ -199,10 +207,6 @@
        other boards: CSS can't keep a grid square when both sides can bind. */
     function applyShape() {
         var field = board.parentElement;
-        // Measure with the field free to fill its row, then (side by side only)
-        // shrink it to the board so the board and the panel sit together.
-        field.style.flex = '';
-        field.style.width = '';
         var side = Math.min(field.clientWidth / COLS, field.clientHeight / (ROWS + PADS));
         var size = Math.floor(side);
         if (size <= 0) return;
@@ -210,10 +214,6 @@
         board.style.setProperty('--wc-cell', cell + 'px');
         board.style.width = (cell * COLS) + 'px';
         board.style.height = Math.round(cell * (ROWS + PADS)) + 'px';
-        if (window.matchMedia('(min-aspect-ratio: 5/4)').matches) {
-            field.style.flex = '0 0 auto';
-            field.style.width = (cell * COLS) + 'px';
-        }
         startPad.style.top = (cell * ROWS) + 'px';
         startPad.style.width = (cell * 2) + 'px';
         startPad.style.height = Math.round(cell * PADS) + 'px';
@@ -300,17 +300,22 @@
         banner.className = 'wc-banner' + (extra ? ' ' + extra : '');
     }
 
+    /* Only the dial of whoever's go it is is lit; the other, and any spider that
+       has already reached the top, dims. The lit one pulses until it is tapped. */
     function syncButton() {
-        spinBtn.disabled = moving || board.dataset.state !== 'play';
-        spinBtn.dataset.turn = turn;
+        var playing = board.dataset.state === 'play';
         ['blue', 'red'].forEach(function (p) {
-            tokens[p].classList.toggle('wc-token-turn', p === turn && !moving && board.dataset.state === 'play');
+            var mine = playing && p === turn && finished.indexOf(p) < 0;
+            dials[p].classList.toggle('wc-dial-live', mine);
+            dials[p].classList.toggle('wc-dial-ready', mine && !moving);
+            dials[p].setAttribute('aria-disabled', mine && !moving ? 'false' : 'true');
+            tokens[p].classList.toggle('wc-token-turn', p === turn && !moving && playing);
         });
     }
 
     function showTurn() {
-        die.textContent = '🎲';
-        who.innerHTML = NAME[turn] + '<br>SPIN!';
+        if (shell) shell.dataset.turn = turn;
+        ['blue', 'red'].forEach(function (p) { dials[p].classList.remove('wc-dial-popped'); });
         setBanner(NAME[turn] + "'s turn!");
         syncButton();
     }
@@ -342,6 +347,18 @@
             tokens[p] = t;
             tokenLayer.appendChild(t);
         });
+        // Six wedges, 60 degrees each, number 1 first clockwise from the pointer.
+        // The numerals turn with the wheel, so they are set in it once, here.
+        ['blue', 'red'].forEach(function (p) {
+            var wheel = dials[p].querySelector('.wc-wheel');
+            for (var v = 1; v <= 6; v++) {
+                var n = document.createElement('span');
+                n.className = 'wc-wedge-num';
+                n.style.setProperty('--wc-angle', ((v - 1) * 60 + 30) + 'deg');
+                n.textContent = v;
+                wheel.appendChild(n);
+            }
+        });
         applyShape();
     }
 
@@ -366,6 +383,7 @@
         finished = [];
         moving = false;
         forced = null;
+        Object.keys(dials).forEach(function (p) { dials[p].removeAttribute('data-value'); });
         round++;
         board.dataset.round = round;
         board.dataset.state = 'play';
@@ -376,26 +394,56 @@
         showTurn();
     }
 
-    function spin() {
-        // Taps while a spider is on the move, or the page is hidden, count for nothing.
-        if (moving || document.hidden || board.dataset.state !== 'play') return;
+    /* A tap on a dial. Only the lit one counts, and only until it has been
+       tapped once: mashing, or poking the other kid's dial, does nothing. */
+    function spin(p) {
+        if (moving || p !== turn || document.hidden || board.dataset.state !== 'play') return;
+        if (finished.indexOf(p) >= 0) return;
         moving = true;
+        dials[p].removeAttribute('data-value');
+        dials[p].classList.remove('wc-dial-popped');
         syncButton();
         var roll = forced !== null ? forced : 1 + Math.floor(Math.random() * 6);
         forced = null;
-        who.innerHTML = NAME[turn] + '<br>…';
-        spinning(turn, roll, 0);
+        whirl(p, roll);
     }
 
-    function spinning(p, roll, i) {
-        if (i < SPIN_TICKS) {
-            die.textContent = String(1 + Math.floor(Math.random() * 6));
-            audio.tick(i);
-            later(function () { spinning(p, roll, i + 1); }, SPIN_MS);
-            return;
+    /* Turn the wheel several times, slowing to a stop with the rolled number's
+       wedge (a little off-centre, so it isn't always dead on) under the pointer.
+       A wheel turned R degrees clockwise has 360 - R under the pointer. */
+    function whirl(p, roll) {
+        var wheel = dials[p].querySelector('.wc-wheel');
+        var from = rotation[p];
+        var want = (360 - ((roll - 1) * 60 + 30 + (Math.random() * 24 - 12))) % 360;
+        var have = ((from % 360) + 360) % 360;
+        var delta = SPIN_TURNS * 360 + ((want - have) + 360) % 360;
+        var elapsed = 0, last = performance.now(), pegs = Math.floor(from / 60);
+        var total = scaled(SPIN_MS);
+
+        function frame() {
+            var now = performance.now();
+            elapsed += Math.min(now - last, 50);        // a pause doesn't skip the wheel ahead
+            last = now;
+            var t = Math.min(1, elapsed / total);
+            var turned = from + delta * (1 - Math.pow(1 - t, 3));
+            wheel.style.transform = 'rotate(' + turned.toFixed(2) + 'deg)';
+            var k = Math.floor(turned / 60);
+            if (k !== pegs) { pegs = k; audio.tick(k); }    // slows down with the wheel
+            if (t < 1) { later(frame, FRAME_MS); return; }
+            rotation[p] = from + delta;
+            stopped(p, roll);
         }
-        die.textContent = String(roll);
-        who.innerHTML = NAME[p] + '<br>rolled ' + roll + '!';
+        frame();
+    }
+
+    function stopped(p, roll) {
+        var d = dials[p];
+        d.dataset.value = roll;
+        var pop = d.querySelector('.wc-rolled');
+        pop.textContent = roll;
+        d.classList.remove('wc-dial-popped');
+        void pop.offsetWidth;                           // restart the pop if it is replaying
+        d.classList.add('wc-dial-popped');
         setBanner(NAME[p] + ' rolled ' + roll + '!');
         audio.land();
         var target = Math.min(TOP, pos[p] + roll);     // no exact finish: past the top is the top
@@ -430,6 +478,7 @@
 
     function reachedTop(p) {
         finished.push(p);
+        syncButton();
         sparkles(['✨', '⭐', '🕸️', '🕷️', '💙', '🎉'], 18);
         audio.fanfare();
         setBanner(NAME[p] + ' made it to the top! 🎉', 'wc-banner-win');
@@ -461,7 +510,9 @@
         showTurn();
     }
 
-    spinBtn.addEventListener('click', spin);
+    Object.keys(dials).forEach(function (p) {
+        dials[p].addEventListener('click', function () { spin(p); });
+    });
 
     // Test hooks. WC_FORCE_ROLL(n) fixes the next roll; WC_STATE() reads the game.
     window.WC_FORCE_ROLL = function (n) { forced = n; };

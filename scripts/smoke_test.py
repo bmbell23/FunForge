@@ -653,14 +653,23 @@ def run(page, errors):
 
     dims = page.evaluate("""() => {
         const rs = [...document.querySelectorAll('.wc-square')].map(c => c.getBoundingClientRect());
-        const spin = document.getElementById('wcSpin').getBoundingClientRect();
+        const dial = p => document.querySelector('.wc-dial[data-player=' + p + ']');
+        const box = p => dial(p).getBoundingClientRect();
+        const bb = box('blue'), rb = box('red');
+        const bd = document.getElementById('wcBoard').getBoundingClientRect();
         return {
             n: rs.length,
             skew: Math.max(...rs.map(r => Math.abs(r.width - r.height))),
             over: document.body.scrollHeight - innerHeight,
             wide: document.documentElement.scrollWidth - innerWidth,
-            spinW: spin.width, spinH: spin.height,
-            spinBottom: spin.bottom - innerHeight,
+            dials: document.querySelectorAll('.wc-dial').length,
+            blueW: bb.width, blueH: bb.height, redW: rb.width, redH: rb.height,
+            round: ['blue', 'red'].every(p => getComputedStyle(dial(p)).borderRadius === '50%'),
+            wedges: [...dial('blue').querySelectorAll('.wc-wedge-num')].map(e => e.textContent).join(''),
+            numFont: parseFloat(getComputedStyle(dial('blue').querySelector('.wc-wedge-num')).fontSize),
+            oneSpin: document.getElementById('wcSpin') === null,
+            blueLeft: bb.left < rb.left, dialsBelow: bb.top >= bd.bottom - 1 && rb.top >= bd.bottom - 1,
+            dialsOn: Math.max(bb.bottom, rb.bottom) - innerHeight,
             font: parseFloat(getComputedStyle(document.querySelector('.wc-num')).fontSize),
             nums: [...document.querySelectorAll('.wc-square')].map(c => +c.dataset.n).slice(0, 10),
             tokens: [...document.querySelectorAll('.wc-token')].map(t => t.dataset.player),
@@ -670,13 +679,47 @@ def run(page, errors):
     assert dims["n"] == 50, f"board has {dims['n']} squares"
     assert dims["skew"] <= 2, f"squares are {dims['skew']}px off square"
     assert dims["over"] <= 0 and dims["wide"] <= 0, "the page scrolls"
-    assert dims["spinBottom"] <= 0, "the spin button is off the bottom of the screen"
-    assert dims["spinW"] >= 80 and dims["spinH"] >= 80, f"spin button is {dims['spinW']}x{dims['spinH']}"
+    assert dims["dials"] == 2 and dims["oneSpin"], f"{dims['dials']} dials, or the old spin button is still there"
+    assert dims["dialsOn"] <= 0, "the dials are off the bottom of the screen"
+    for who in ("blue", "red"):
+        w, h = dims[who + "W"], dims[who + "H"]
+        assert w >= 120 and h >= 120, f"{who} dial is {w}x{h}"
+        assert abs(w - h) <= 1, f"{who} dial is {w}x{h}, not round"
+    assert dims["round"], "a dial is not drawn as a circle"
+    assert dims["wedges"] == "123456", f"the wedges read {dims['wedges']}"
+    assert dims["numFont"] >= 24, f"wedge numerals are {dims['numFont']}px"
+    assert dims["blueLeft"] and dims["dialsBelow"], "blue's dial should sit bottom-left, red's bottom-right, under the board"
     assert dims["font"] >= 24, f"square numbers are {dims['font']}px"
     assert dims["nums"] == [50, 49, 48, 47, 46, 41, 42, 43, 44, 45], f"top rows read {dims['nums']}"
     assert sorted(dims["tokens"]) == ["blue", "red"], f"tokens are {dims['tokens']}"
     assert dims["jumps"] == 8, f"{dims['jumps']} chutes and ladders"
-    ok(f"5x10 square board, spin button {dims['spinW']:.0f}x{dims['spinH']:.0f}, two spiders, nothing scrolls")
+    ok(f"5x10 square board, two {dims['blueW']:.0f}px dials, two spiders, nothing scrolls")
+
+    # Wide: blue's dial left of the board, red's right, and still no scrolling.
+    portrait = page.viewport_size
+    page.set_viewport_size({"width": 1366, "height": 768})
+    page.wait_for_timeout(300)
+    wide = page.evaluate("""() => {
+        const r = s => document.querySelector(s).getBoundingClientRect();
+        const bd = r('#wcBoard'), bl = r('.wc-dial[data-player=blue]'), rd = r('.wc-dial[data-player=red]');
+        const sq = [...document.querySelectorAll('.wc-square')].map(c => c.getBoundingClientRect());
+        return {
+            over: document.body.scrollHeight - innerHeight,
+            wide: document.documentElement.scrollWidth - innerWidth,
+            sides: bl.right <= bd.left && rd.left >= bd.right,
+            centred: Math.abs((bd.left + bd.right) / 2 - innerWidth / 2) <= 4,
+            dials: Math.min(bl.width, rd.width),
+            inside: bd.bottom <= innerHeight && bl.bottom <= innerHeight && rd.bottom <= innerHeight && bd.top >= 0,
+            skew: Math.max(...sq.map(c => Math.abs(c.width - c.height))),
+        };
+    }""")
+    assert wide["over"] <= 0 and wide["wide"] <= 0, "Web Climb scrolls at 1366x768"
+    assert wide["inside"], "Web Climb spills off the screen at 1366x768"
+    assert wide["sides"] and wide["centred"], f"dials should flank a centred board at 1366x768: {wide}"
+    assert wide["dials"] >= 120 and wide["skew"] <= 2, f"wide dials {wide['dials']}px, squares {wide['skew']}px off"
+    ok(f"at 1366x768 the dials ({wide['dials']:.0f}px) flank the board and nothing scrolls")
+    page.set_viewport_size(portrait)
+    page.wait_for_timeout(300)
 
     def wc():
         return page.evaluate("WC_STATE()")
@@ -685,14 +728,68 @@ def run(page, errors):
         page.wait_for_function("!WC_STATE().moving", timeout=5000)
         return wc()
 
-    # Mash the button: one roll, one spider moves, and the turn passes to red.
-    page.evaluate("window.FF_WC_FAST = true; WC_FORCE_ROLL(2)")
+    def spin():
+        """Tap the dial of whoever's go it is."""
+        page.click(f".wc-dial[data-player={wc()['turn']}]")
+
+    def shell_bg():
+        return page.evaluate("""() => {
+            const s = document.querySelector('.game-shell');
+            return [s.dataset.turn, getComputedStyle(s).backgroundImage];
+        }""")
+
+    page.evaluate("window.FF_WC_FAST = true")
     assert wc()["turn"] == "blue", "blue should start"
-    page.evaluate("() => { const b = document.getElementById('wcSpin'); for (let i = 0; i < 10; i++) b.click(); }")
+
+    # Only the current dial is live; the other one dims and ignores taps.
+    look = page.evaluate("""() => {
+        const o = p => getComputedStyle(document.querySelector('.wc-dial[data-player=' + p + ']')).opacity;
+        return { blue: +o('blue'), red: +o('red') };
+    }""")
+    assert look["blue"] == 1 and look["red"] < 0.5, f"dial opacities are {look}"
+    page.evaluate("() => { const d = document.querySelector('.wc-dial[data-player=red]'); for (let i = 0; i < 5; i++) d.click(); }")
+    page.wait_for_timeout(150)
+    st = wc()
+    assert st["turn"] == "blue" and not st["moving"] and st["pos"] == {"blue": 0, "red": 0}, \
+        f"tapping the other kid's dial changed things: {st}"
+    ok("only the current player's dial answers a tap")
+
+    # The screen takes the colour of whoever's go it is.
+    blue_turn, blue_bg = shell_bg()
+    assert blue_turn == "blue", f"data-turn is {blue_turn} on blue's go"
+
+    # Mash the live dial: one roll, one spider moves, and the turn passes to red.
+    page.evaluate("WC_FORCE_ROLL(2)")
+    page.evaluate("() => { const b = document.querySelector('.wc-dial[data-player=blue]'); for (let i = 0; i < 10; i++) b.click(); }")
     st = wc_settle()
     assert st["pos"] == {"blue": 2, "red": 0}, f"ten taps moved the spiders to {st['pos']}"
     assert st["turn"] == "red", f"turn is {st['turn']}, not red"
-    ok("mashing spin moves one spider once and passes the turn")
+    ok("mashing the live dial moves one spider once and passes the turn")
+
+    red_turn, red_bg = shell_bg()
+    assert red_turn == "red", f"data-turn is {red_turn} on red's go"
+    assert red_bg != blue_bg, "the background didn't change between blue's go and red's"
+    ok("the whole screen changes colour with the turn (blue -> red)")
+
+    # The wheel stops with the rolled number's wedge under the pointer.
+    def under_pointer(who):
+        return page.evaluate("""(who) => {
+            const d = document.querySelector('.wc-dial[data-player=' + who + ']');
+            const m = new DOMMatrix(getComputedStyle(d.querySelector('.wc-wheel')).transform);
+            const turned = Math.atan2(m.b, m.a) * 180 / Math.PI;
+            return [Math.floor((((360 - turned) % 360) + 360) % 360 / 60) + 1, +d.dataset.value];
+        }""", who)
+
+    # (Rolls chosen to stay clear of every jump, so the ladder and chute checks
+    # below still start from open ground.)
+    for n, who in ((5, "red"), (6, "blue"), (1, "red")):
+        assert wc()["turn"] == who, f"expected {who}'s go, got {wc()['turn']}"
+        page.evaluate(f"WC_FORCE_ROLL({n})")
+        spin()
+        wc_settle()
+        wedge, shown = under_pointer(who)
+        assert wedge == n and shown == n, f"rolled {n} but the pointer is on {wedge} (data-value {shown})"
+    ok("a forced roll lands that number's wedge under the pointer")
 
     # The ladder and the chute come from the board itself, so the test can't
     # drift from it: the first ladder (lowest bottom) and the first chute.
@@ -702,7 +799,7 @@ def run(page, errors):
 
     def wc_step(roll):
         page.evaluate(f"WC_FORCE_ROLL({roll})")
-        page.click("#wcSpin")
+        spin()
         return wc_settle()
 
     def wc_walk(who, target):
@@ -755,7 +852,7 @@ def run(page, errors):
                 // Past 50 on purpose once the spider is close: the overshoot rule.
                 if (p >= 45) roll = 6;
                 WC_FORCE_ROLL(roll);
-                document.getElementById('wcSpin').click();
+                document.querySelector('.wc-dial[data-player=' + s.turn + ']').click();
             }
             await sleep(1);
         }
