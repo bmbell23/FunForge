@@ -2357,11 +2357,11 @@ body:has(.game-shell) .header { display: none; }
     min-height: 0;
     position: relative;
     display: grid;
-    /* Portrait: the board, the banner, then blue's dial bottom-left and red's
-       bottom-right. */
+    /* Portrait: the board, then blue's dial bottom-left and red's bottom-right.
+       No turn banner taking a row: the lit dial already says whose go it is. */
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: minmax(0, 1fr) auto auto;
-    grid-template-areas: "field field" "banner banner" "blue red";
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas: "field field" "blue red";
     justify-items: center;
     align-items: center;
     padding: 6px;
@@ -2380,11 +2380,20 @@ body:has(.game-shell) .header { display: none; }
 }
 
 /* Fixed height, so a long message never changes the room the board has. */
+/* The banner floats over the board and only shows for a party (#54): every
+   other message is still in it for screen readers, but a row of "Blue spider's
+   turn!" cost a tablet a fifth of its board. */
 .wc-banner {
-    grid-area: banner;
-    width: 100%;
+    position: absolute;
+    left: 50%;
+    top: 30%;
+    transform: translateX(-50%);
+    z-index: 10;
+    width: min(92%, 640px);
+    visibility: hidden;
+    pointer-events: none;
     box-sizing: border-box;
-    height: 64px;
+    min-height: 64px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2398,7 +2407,7 @@ body:has(.game-shell) .header { display: none; }
     text-align: center;
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
-.wc-banner-win { background: #FFD54F; color: #4A2C00; text-shadow: none; animation: ttt-bounce 0.6s ease infinite alternate; }
+.wc-banner-win { visibility: visible; background: #FFD54F; color: #4A2C00; text-shadow: none; animation: ttt-bounce 0.6s ease infinite alternate; }
 
 .wc-board {
     position: relative;
@@ -2522,7 +2531,10 @@ body:has(.game-shell) .header { display: none; }
     position: absolute;
     left: 50%;
     top: 50%;
-    transform: translate(-50%, -50%) rotate(var(--wc-angle)) translateY(calc(var(--wc-dial) * -0.33));
+    /* Out to the wedge, then turned back by the wedge angle and the wheel's spin
+       so the numeral stays upright: a tilted 1 reads as a 7 (#54). */
+    transform: translate(-50%, -50%) rotate(var(--wc-angle)) translateY(calc(var(--wc-dial) * -0.33))
+               rotate(calc(-1 * (var(--wc-angle) + var(--wc-turned, 0deg))));
     font-size: max(24px, calc(var(--wc-dial) * 0.2));
     font-weight: 900;
     line-height: 1;
@@ -2590,9 +2602,12 @@ body:has(.game-shell) .header { display: none; }
    tablet under browser bars sits just below 5:4 and got the phone stack (#54). */
 .wc-stage.wc-wide {
     grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-rows: auto minmax(0, 1fr);
-    grid-template-areas: "blue banner red" "blue field red";
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "blue field red";
     column-gap: 24px;
+    /* Up into the shell's exit strip: the ✖ sits in the top-right corner, and
+       the red dial is centred well below it. */
+    margin-top: calc(-48px - env(safe-area-inset-top));
     --wc-dial: max(120px, min(26vw, 46vh, 280px));
 }
 .wc-wide .wc-dial[data-player="blue"], .wc-wide .wc-dial[data-player="red"] { align-self: center; }
