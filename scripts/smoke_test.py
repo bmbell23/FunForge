@@ -1003,14 +1003,13 @@ def run(page, errors):
     # under the rim, and one just beside it, still pop the bubble aimed at.
     for label, ox, oy in (("under", 0, 22), ("beside", 20, 0)):
         pops_before = stage_num("pops")
+        # One bubble alone in the middle (#44): with the screen full, a neighbour
+        # could sit closer to the touch than the target and rightly win it.
         hit = page.evaluate("""([ox, oy]) => {
             const st = document.getElementById('bubStage');
-            const sr = st.getBoundingClientRect();
-            const el = [...st.querySelectorAll('.bub-bubble')].find(e => {
-                const r = e.getBoundingClientRect();
-                return e.dataset.kind !== 'finger' && r.top > sr.top + 20 && r.bottom < sr.bottom - 60
-                    && r.left > sr.left + 40 && r.right < sr.right - 40;
-            });
+            FF_BUB_AUTO(false);
+            FF_BUB_CLEAR();
+            const el = st.querySelector(`.bub-bubble[data-id='${FF_BUB_SPAWN('normal', '')}']`);
             if (!el) return null;
             const r = el.getBoundingClientRect();
             const x = r.left + r.width / 2 + (ox ? r.width / 2 + ox : 0);
@@ -1025,6 +1024,7 @@ def run(page, errors):
             f"a touch just {label} the rim did not pop the bubble"
         assert stage_num("pops") == pops_before + 1, f"the {label}-the-rim pop was not counted"
     ok("a touch just under or beside the rim still pops the bubble aimed at")
+    page.wait_for_function("document.querySelectorAll('.bub-bubble').length >= 6", timeout=6000)
 
     # Several fingers at once: three simultaneous pointers, each with its own id.
     pops_before = stage_num("pops")
