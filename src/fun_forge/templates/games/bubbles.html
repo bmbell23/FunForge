@@ -771,6 +771,7 @@
         return b.el.dataset.id;
     };
     window.FF_BUB_AUTO = function (on) { autoEvents = !!on; };
+    window.FF_BUB_CLEAR = function () { while (bubbles.length) drop(bubbles[0]); };
 
     // ---- shell hooks ----------------------------------------------------
 
