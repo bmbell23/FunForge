@@ -1384,6 +1384,18 @@ def run(page, errors):
     assert not errors, "JS errors: " + "; ".join(errors)
     ok("no uncaught JS errors on any page")
 
+    # #48: no right-click / long-press menu on any page.
+    for path in ("/", "/music/", "/games/", "/games/checkers/"):
+        go(path)
+        blocked = page.evaluate("""() => {
+            const t = document.querySelector('img, .game-card, .home-tile, button') || document.body;
+            const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 });
+            t.dispatchEvent(ev);
+            return ev.defaultPrevented;
+        }""")
+        assert blocked, f"right-click still opens a menu on {path}"
+    ok("right-click and long-press menus are blocked on every page")
+
 
 def main():
     errors = []

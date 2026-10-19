@@ -39,6 +39,14 @@
     {% block extra_js %}{% endblock %}
 
     <script>
+        // No right-click or long-press menu anywhere (#48): "save image", "open in
+        // new tab" and friends are a way out of the app for a kid. Text fields
+        // keep theirs, so a grown-up can still paste.
+        document.addEventListener('contextmenu', function(e) {
+            if (e.target.closest && e.target.closest('input, textarea, [contenteditable]')) return;
+            e.preventDefault();
+        });
+
         // Prevent pinch zoom on iOS and other touch devices
         document.addEventListener('gesturestart', function(e) {
             e.preventDefault();
